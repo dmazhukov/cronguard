@@ -8,16 +8,41 @@ metadata:
 spec:
   group: monitoring.cronguard.io
   names:
+    categories:
+    - monitoring
     kind: CronJobMonitor
     listKind: CronJobMonitorList
     plural: cronjobmonitors
+    shortNames:
+    - cjmon
+    - cjm
     singular: cronjobmonitor
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.resolvedSchedule
+      name: Schedule
+      type: string
+    - jsonPath: .status.lastSuccessTime
+      name: LastSuccess
+      type: date
+    - jsonPath: .status.consecutiveFailures
+      name: ConsecFails
+      type: integer
+    - jsonPath: .status.missedRuns
+      name: Missed
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CronJobMonitor is the Schema for the cronjobmonitors API
+        description: CronJobMonitor declares an SLO for a CronJob and records its
+          observed state.
         properties:
           apiVersion:
             description: |-
@@ -37,27 +62,76 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of CronJobMonitor
+            description: CronJobMonitorSpec defines the desired SLO for a CronJob.
             properties:
-              foo:
-                description: foo is an example field of CronJobMonitor. Edit cronjobmonitor_types.go
-                  to remove/update
+              alertAfterMissedRuns:
+                default: 2
+                description: |-
+                  AlertAfterMissedRuns is the number of consecutive missed expected runs
+                  that flips ScheduleHealthy to False.
+                format: int32
+                minimum: 1
+                type: integer
+              cronJobRef:
+                description: CronJobRef points at the CronJob this monitor observes.
+                properties:
+                  name:
+                    description: Name is the name of the CronJob in the same namespace
+                      as this CronJobMonitor.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              gracePeriodSeconds:
+                default: 60
+                description: |-
+                  GracePeriodSeconds is the tolerance window after an expected run before
+                  the run is considered missed.
+                format: int32
+                minimum: 0
+                type: integer
+              historyLimit:
+                default: 10
+                description: HistoryLimit is the maximum number of recent executions
+                  kept in status.
+                format: int32
+                maximum: 100
+                minimum: 1
+                type: integer
+              maxConsecutiveFailures:
+                default: 2
+                description: |-
+                  MaxConsecutiveFailures is the number of consecutive failed runs that
+                  flips ExecutionHealthy to False.
+                format: int32
+                minimum: 1
+                type: integer
+              maxDurationSeconds:
+                description: |-
+                  MaxDurationSeconds is the SLO for a single Job's wall-clock duration.
+                  When unset, the check is disabled.
+                format: int32
+                minimum: 1
+                type: integer
+              schedule:
+                description: |-
+                  Schedule is the expected cron expression. When unset, the controller
+                  falls back to the referenced CronJob's spec.schedule.
+                maxLength: 128
+                minLength: 1
                 type: string
+            required:
+            - cronJobRef
             type: object
           status:
-            description: status defines the observed state of CronJobMonitor
+            description: CronJobMonitorStatus captures the observed SLO state of the
+              monitored CronJob.
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the CronJobMonitor resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: Conditions reflect the current SLO evaluation.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -113,12 +187,85 @@ spec:
                   - type
                   type: object
                 type: array
-                x-kubernetes-list-map-keys:
-                - type
-                x-kubernetes-list-type: map
+              consecutiveFailures:
+                description: ConsecutiveFailures counts terminal failures in a row;
+                  resets on success.
+                format: int32
+                type: integer
+              lastFailureTime:
+                format: date-time
+                type: string
+              lastScheduleTime:
+                format: date-time
+                type: string
+              lastSuccessTime:
+                format: date-time
+                type: string
+              missedRuns:
+                description: MissedRuns counts consecutive expected runs that did
+                  not start within grace.
+                format: int32
+                type: integer
+              nextExpectedTime:
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration matches metadata.generation after
+                  a successful reconcile.
+                format: int64
+                type: integer
+              recentExecutions:
+                description: RecentExecutions is a newest-first ring buffer of size
+                  HistoryLimit.
+                items:
+                  description: ExecutionRecord summarises a single Job execution observed
+                    by the controller.
+                  properties:
+                    driftSeconds:
+                      format: int32
+                      type: integer
+                    durationSeconds:
+                      format: int32
+                      type: integer
+                    endTime:
+                      format: date-time
+                      type: string
+                    expectedStartTime:
+                      format: date-time
+                      type: string
+                    jobName:
+                      type: string
+                    phase:
+                      description: ExecutionPhase is a closed set of values for ExecutionRecord.Phase.
+                      enum:
+                      - Succeeded
+                      - Failed
+                      - Running
+                      type: string
+                    startTime:
+                      format: date-time
+                      type: string
+                  required:
+                  - jobName
+                  - phase
+                  - startTime
+                  type: object
+                type: array
+              resolvedSchedule:
+                description: |-
+                  ResolvedSchedule is the schedule used for evaluation (spec.schedule or
+                  CronJob.spec.schedule).
+                type: string
+              scheduleDriftSeconds:
+                description: ScheduleDriftSeconds is the drift of the most recent
+                  run.
+                format: int32
+                type: integer
+            required:
+            - consecutiveFailures
+            - missedRuns
+            - scheduleDriftSeconds
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

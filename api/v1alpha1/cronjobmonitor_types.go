@@ -20,70 +20,172 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// CronJobReference is a namespace-local reference to a batch/v1 CronJob.
+type CronJobReference struct {
+	// Name is the name of the CronJob in the same namespace as this CronJobMonitor.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+}
 
-// CronJobMonitorSpec defines the desired state of CronJobMonitor
+// CronJobMonitorSpec defines the desired SLO for a CronJob.
 type CronJobMonitorSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// CronJobRef points at the CronJob this monitor observes.
+	// +kubebuilder:validation:Required
+	CronJobRef CronJobReference `json:"cronJobRef"`
 
-	// foo is an example field of CronJobMonitor. Edit cronjobmonitor_types.go to remove/update
+	// Schedule is the expected cron expression. When unset, the controller
+	// falls back to the referenced CronJob's spec.schedule.
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	Schedule string `json:"schedule,omitempty"`
+
+	// MaxDurationSeconds is the SLO for a single Job's wall-clock duration.
+	// When unset, the check is disabled.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	MaxDurationSeconds *int32 `json:"maxDurationSeconds,omitempty"`
+
+	// MaxConsecutiveFailures is the number of consecutive failed runs that
+	// flips ExecutionHealthy to False.
+	// +kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=1
+	MaxConsecutiveFailures int32 `json:"maxConsecutiveFailures,omitempty"`
+
+	// AlertAfterMissedRuns is the number of consecutive missed expected runs
+	// that flips ScheduleHealthy to False.
+	// +kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=1
+	AlertAfterMissedRuns int32 `json:"alertAfterMissedRuns,omitempty"`
+
+	// GracePeriodSeconds is the tolerance window after an expected run before
+	// the run is considered missed.
+	// +kubebuilder:default=60
+	// +kubebuilder:validation:Minimum=0
+	GracePeriodSeconds int32 `json:"gracePeriodSeconds,omitempty"`
+
+	// HistoryLimit is the maximum number of recent executions kept in status.
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	HistoryLimit int32 `json:"historyLimit,omitempty"`
 }
 
-// CronJobMonitorStatus defines the observed state of CronJobMonitor.
+// ExecutionPhase is a closed set of values for ExecutionRecord.Phase.
+// +kubebuilder:validation:Enum=Succeeded;Failed;Running
+type ExecutionPhase string
+
+const (
+	ExecutionPhaseSucceeded ExecutionPhase = "Succeeded"
+	ExecutionPhaseFailed    ExecutionPhase = "Failed"
+	ExecutionPhaseRunning   ExecutionPhase = "Running"
+)
+
+// ExecutionRecord summarises a single Job execution observed by the controller.
+type ExecutionRecord struct {
+	JobName           string         `json:"jobName"`
+	StartTime         metav1.Time    `json:"startTime"`
+	EndTime           *metav1.Time   `json:"endTime,omitempty"`
+	ExpectedStartTime *metav1.Time   `json:"expectedStartTime,omitempty"`
+	DurationSeconds   *int32         `json:"durationSeconds,omitempty"`
+	DriftSeconds      *int32         `json:"driftSeconds,omitempty"`
+	Phase             ExecutionPhase `json:"phase"`
+}
+
+// CronJobMonitorStatus captures the observed SLO state of the monitored CronJob.
 type CronJobMonitorStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the CronJobMonitor resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
-	// +listType=map
-	// +listMapKey=type
+	// ObservedGeneration matches metadata.generation after a successful reconcile.
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions reflect the current SLO evaluation.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// ResolvedSchedule is the schedule used for evaluation (spec.schedule or
+	// CronJob.spec.schedule).
+	// +optional
+	ResolvedSchedule *string `json:"resolvedSchedule,omitempty"`
+
+	// +optional
+	LastScheduleTime *metav1.Time `json:"lastScheduleTime,omitempty"`
+	// +optional
+	LastSuccessTime *metav1.Time `json:"lastSuccessTime,omitempty"`
+	// +optional
+	LastFailureTime *metav1.Time `json:"lastFailureTime,omitempty"`
+	// +optional
+	NextExpectedTime *metav1.Time `json:"nextExpectedTime,omitempty"`
+
+	// ConsecutiveFailures counts terminal failures in a row; resets on success.
+	ConsecutiveFailures int32 `json:"consecutiveFailures"`
+	// MissedRuns counts consecutive expected runs that did not start within grace.
+	MissedRuns int32 `json:"missedRuns"`
+	// ScheduleDriftSeconds is the drift of the most recent run.
+	ScheduleDriftSeconds int32 `json:"scheduleDriftSeconds"`
+
+	// RecentExecutions is a newest-first ring buffer of size HistoryLimit.
+	// +optional
+	RecentExecutions []ExecutionRecord `json:"recentExecutions,omitempty"`
 }
+
+// Condition type constants.
+const (
+	ConditionReconciled       = "Reconciled"
+	ConditionScheduleHealthy  = "ScheduleHealthy"
+	ConditionExecutionHealthy = "ExecutionHealthy"
+	ConditionDurationHealthy  = "DurationHealthy"
+	ConditionReady            = "Ready"
+)
+
+// Condition reason constants.
+const (
+	ReasonReconcileSuccess    = "ReconcileSuccess"
+	ReasonInvalidSchedule     = "InvalidSchedule"
+	ReasonCronJobNotFound     = "CronJobNotFound"
+	ReasonCronJobSuspended    = "CronJobSuspended"
+	ReasonOnSchedule          = "OnSchedule"
+	ReasonScheduleMissed      = "ScheduleMissed"
+	ReasonSuspended           = "Suspended"
+	ReasonNoSchedule          = "NoSchedule"
+	ReasonRecentSuccess       = "RecentSuccess"
+	ReasonConsecutiveFailures = "ConsecutiveFailures"
+	ReasonNoRuns              = "NoRuns"
+	ReasonWithinBudget        = "WithinBudget"
+	ReasonDurationExceeded    = "DurationExceeded"
+	ReasonCheckDisabled       = "CheckDisabled"
+	ReasonAllChecksPass       = "AllChecksPass"
+)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced,shortName=cjmon;cjm,categories=monitoring
+// +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.status.resolvedSchedule`
+// +kubebuilder:printcolumn:name="LastSuccess",type=date,JSONPath=`.status.lastSuccessTime`
+// +kubebuilder:printcolumn:name="ConsecFails",type=integer,JSONPath=`.status.consecutiveFailures`
+// +kubebuilder:printcolumn:name="Missed",type=integer,JSONPath=`.status.missedRuns`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// CronJobMonitor is the Schema for the cronjobmonitors API
+// CronJobMonitor declares an SLO for a CronJob and records its observed state.
 type CronJobMonitor struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// metadata is a standard object metadata
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
-
-	// spec defines the desired state of CronJobMonitor
-	// +required
-	Spec CronJobMonitorSpec `json:"spec"`
-
-	// status defines the observed state of CronJobMonitor
-	// +optional
-	Status CronJobMonitorStatus `json:"status,omitzero"`
+	Spec   CronJobMonitorSpec   `json:"spec,omitempty"`
+	Status CronJobMonitorStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// CronJobMonitorList contains a list of CronJobMonitor
+// CronJobMonitorList contains a list of CronJobMonitor.
 type CronJobMonitorList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []CronJobMonitor `json:"items"`
 }
 
