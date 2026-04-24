@@ -76,9 +76,10 @@ spec:
                 description: CronJobRef points at the CronJob this monitor observes.
                 properties:
                   name:
-                    description: Name is the name of the CronJob in the same namespace
-                      as this CronJobMonitor.
-                    maxLength: 253
+                    description: |-
+                      Name is the name of the CronJob in the same namespace as this CronJobMonitor.
+                      Must be a DNS-1123 label (lowercase alphanumeric with hyphens, up to 63 chars).
+                    maxLength: 63
                     minLength: 1
                     pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
@@ -186,6 +187,7 @@ spec:
                   - status
                   - type
                   type: object
+                maxItems: 10
                 type: array
               consecutiveFailures:
                 description: ConsecutiveFailures counts terminal failures in a row;
@@ -250,6 +252,7 @@ spec:
                   - phase
                   - startTime
                   type: object
+                maxItems: 100
                 type: array
               resolvedSchedule:
                 description: |-

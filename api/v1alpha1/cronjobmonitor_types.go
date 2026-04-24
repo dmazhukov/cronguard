@@ -23,9 +23,10 @@ import (
 // CronJobReference is a namespace-local reference to a batch/v1 CronJob.
 type CronJobReference struct {
 	// Name is the name of the CronJob in the same namespace as this CronJobMonitor.
+	// Must be a DNS-1123 label (lowercase alphanumeric with hyphens, up to 63 chars).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	Name string `json:"name"`
 }
@@ -105,6 +106,7 @@ type CronJobMonitorStatus struct {
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
+	// +kubebuilder:validation:MaxItems=10
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// ResolvedSchedule is the schedule used for evaluation (spec.schedule or
@@ -130,6 +132,7 @@ type CronJobMonitorStatus struct {
 
 	// RecentExecutions is a newest-first ring buffer of size HistoryLimit.
 	// +optional
+	// +kubebuilder:validation:MaxItems=100
 	RecentExecutions []ExecutionRecord `json:"recentExecutions,omitempty"`
 }
 
