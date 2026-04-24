@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2026 Dmitrii Zhukov.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	monitoringv1alpha1 "github.com/cronguard/cronguard/api/v1alpha1"
+	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 )
 
 var _ = Describe("CronJobMonitor Controller", func() {

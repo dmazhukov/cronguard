@@ -7,7 +7,7 @@ domain: cronguard.io
 layout:
 - go.kubebuilder.io/v4
 projectName: cronguard
-repo: github.com/cronguard/cronguard
+repo: github.com/dmazhukov/cronguard
 resources:
 - api:
     crdVersion: v1
@@ -16,6 +16,6 @@ resources:
   domain: cronguard.io
   group: monitoring
   kind: CronJobMonitor
-  path: github.com/cronguard/cronguard/api/v1alpha1
+  path: github.com/dmazhukov/cronguard/api/v1alpha1
   version: v1alpha1
 version: "3"
