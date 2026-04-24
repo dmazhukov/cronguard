@@ -1,4 +1,4 @@
-module github.com/cronguard/cronguard
+module github.com/dmazhukov/cronguard
 
 go 1.25.3
 

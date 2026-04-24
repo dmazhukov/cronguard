@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2026 Dmitrii Zhukov.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	monitoringv1alpha1 "github.com/cronguard/cronguard/api/v1alpha1"
-	"github.com/cronguard/cronguard/internal/controller"
+	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
+	"github.com/dmazhukov/cronguard/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright 2026 Dmitrii Zhukov.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	monitoringv1alpha1 "github.com/cronguard/cronguard/api/v1alpha1"
+	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 )
 
 // CronJobMonitorReconciler reconciles a CronJobMonitor object
