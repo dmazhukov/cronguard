@@ -1,135 +1,127 @@
-# cronguard
-// TODO(user): Add simple overview of use/purpose
+# CronGuard
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+[![CI](https://github.com/dmazhukov/cronguard/actions/workflows/ci.yml/badge.svg)](https://github.com/dmazhukov/cronguard/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dmazhukov/cronguard)](https://goreportcard.com/report/github.com/dmazhukov/cronguard)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/dmazhukov/cronguard)](go.mod)
 
-## Getting Started
+**SLO-style observability for Kubernetes CronJobs.**
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+CronGuard is a small Kubernetes operator that wraps any existing `batch/v1.CronJob` with a `CronJobMonitor` custom resource. It watches child Jobs, tracks execution history, and exposes high-quality Prometheus metrics — so you can alert on missed runs, duration budget violations, and consecutive failures without hand-rolling PromQL against `kube-state-metrics`.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## Why
 
-```sh
-make docker-build docker-push IMG=<some-registry>/cronguard:tag
+Kubernetes CronJobs fail silently more often than you think: a skipped run under `concurrencyPolicy: Forbid`, a Job that completes with no succeeded pods, control-plane drift pushing starts minutes late. Teams keep re-inventing the same fragile PromQL:
+
+```promql
+time() - kube_cronjob_status_last_successful_time{cronjob="..."} > 86400
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+CronGuard replaces that with a declarative SLO per CronJob.
 
-**Install the CRDs into the cluster:**
+## Quickstart
 
-```sh
-make install
+```bash
+# Install CRDs and the operator
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.1.0/install.yaml
+
+# Apply a sample
+kubectl apply -f config/samples/cronjob_example.yaml
+kubectl apply -f config/samples/monitoring_v1alpha1_cronjobmonitor.yaml
+
+# Check it
+kubectl get cronjobmonitors
+# NAME                  SCHEDULE      LASTSUCCESS   CONSECFAILS   MISSED   READY   AGE
+# nightly-settlement    0 2 * * *     5m            0             0        True    10m
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+## Example
 
-```sh
-make deploy IMG=<some-registry>/cronguard:tag
+```yaml
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata:
+  name: nightly-settlement
+spec:
+  cronJobRef:
+    name: nightly-settlement
+  schedule: "0 2 * * *"
+  maxDurationSeconds: 1800       # SLO: finish within 30 minutes
+  maxConsecutiveFailures: 2      # alert after 2 failures in a row
+  alertAfterMissedRuns: 2        # alert after 2 missed starts
+  gracePeriodSeconds: 60
+  historyLimit: 10
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+## Metrics
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+All metrics are labelled `{namespace, name, cronjob}`.
 
-```sh
-kubectl apply -k config/samples/
+| Metric | Type | Meaning |
+|---|---|---|
+| `cronguard_last_success_timestamp_seconds` | gauge | Unix time of last successful Job |
+| `cronguard_last_failure_timestamp_seconds` | gauge | Unix time of last failed Job |
+| `cronguard_next_expected_timestamp_seconds` | gauge | Unix time of next expected run |
+| `cronguard_consecutive_failures` | gauge | Consecutive failed runs |
+| `cronguard_missed_runs` | gauge | Consecutive missed runs |
+| `cronguard_schedule_drift_seconds` | gauge | Drift of most recent run |
+| `cronguard_last_duration_seconds` | gauge | Duration of last completed run |
+| `cronguard_condition` | gauge | `1`/`0`/`-1` per condition type/reason |
+
+Example alerts (PromQL):
+
+```promql
+# No success in 25 hours for a daily CronJob
+(time() - cronguard_last_success_timestamp_seconds) > 90000
+
+# Execution SLO breached
+cronguard_condition{type="ExecutionHealthy", status="false"} == 0
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+## Architecture
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+```
+  User applies CronJobMonitor YAML
+           │
+           ▼
+    apiserver ──► Reconciler ──► computes SLO ──► patches .status
+           ▲                            │
+           └──── Job events (informer) ─┘
 
-```sh
-kubectl delete -k config/samples/
+    /metrics scrape ──► Collector reads cache ──► emits cronguard_*
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+No webhooks, no finalizers, no ownership of foreign resources.
 
-```sh
-make uninstall
+## Roadmap
+
+**v0.1.0 (Phase 1, this release):** operator core, CRD, envtest suite, raw manifests, Prometheus metrics.
+
+**Phase 2 (planned):** Helm chart, Grafana dashboard, `PrometheusRule` bundle, `ServiceMonitor`, `kind`-based e2e, Artifact Hub publication.
+
+**Phase 3 (possible):** admission webhook (CEL validation), OLM bundle, namespace-scoped variant, burn-rate alerts.
+
+## Development
+
+```bash
+# Run unit + envtest
+make test
+
+# Run the manager against your current kube-context
+make run
+
+# Build a local Docker image
+make docker-build IMG=cronguard:dev
 ```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/cronguard:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/cronguard/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+## Security
+
+See [SECURITY.md](SECURITY.md).
 
 ## License
 
-Copyright 2026 Dmitrii Zhukov.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache 2.0 — see [LICENSE](LICENSE).
