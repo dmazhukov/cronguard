@@ -25,6 +25,7 @@ import (
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 	"github.com/dmazhukov/cronguard/internal/history"
+	"github.com/dmazhukov/cronguard/internal/metrics"
 	"github.com/dmazhukov/cronguard/internal/schedule"
 )
 
@@ -45,11 +46,19 @@ type CronJobMonitorReconciler struct {
 // Reconcile reads the CronJobMonitor, inspects the referenced CronJob and its
 // Jobs, and updates status conditions and execution history accordingly.
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	start := time.Now()
+	result := metrics.ResultSuccess
+	defer func() {
+		metrics.ReconcileTotal.WithLabelValues(req.Namespace, req.Name, result).Inc()
+		metrics.ReconcileDurationSeconds.WithLabelValues(req.Namespace, req.Name).Observe(time.Since(start).Seconds())
+	}()
+
 	cjm := &monitoringv1alpha1.CronJobMonitor{}
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
+		result = metrics.ResultError
 		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
 	}
 
@@ -58,6 +67,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	cronJobFound := true
 	if err := r.Get(ctx, cjKey, cj); err != nil {
 		if !apierrors.IsNotFound(err) {
+			result = metrics.ResultError
 			return ctrl.Result{}, fmt.Errorf("get CronJob: %w", err)
 		}
 		cronJobFound = false
@@ -80,7 +90,13 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		evaluateExecutionHealthy(cjm)
 		evaluateDurationHealthy(cjm)
 		evaluateReady(cjm)
-		return r.patchStatus(ctx, cjm)
+		res, err := r.patchStatus(ctx, cjm)
+		if err != nil {
+			result = metrics.ResultError
+		} else if res.Requeue {
+			result = metrics.ResultRequeue
+		}
+		return res, err
 	}
 
 	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
@@ -100,7 +116,13 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		evaluateExecutionHealthy(cjm)
 		evaluateDurationHealthy(cjm)
 		evaluateReady(cjm)
-		return r.patchStatus(ctx, cjm)
+		res, err := r.patchStatus(ctx, cjm)
+		if err != nil {
+			result = metrics.ResultError
+		} else if res.Requeue {
+			result = metrics.ResultRequeue
+		}
+		return res, err
 	}
 
 	scheduleExpr := cjm.Spec.Schedule
@@ -119,12 +141,19 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		evaluateExecutionHealthy(cjm)
 		evaluateDurationHealthy(cjm)
 		evaluateReady(cjm)
-		return r.patchStatus(ctx, cjm)
+		res, err := r.patchStatus(ctx, cjm)
+		if err != nil {
+			result = metrics.ResultError
+		} else if res.Requeue {
+			result = metrics.ResultRequeue
+		}
+		return res, err
 	}
 	cjm.Status.ResolvedSchedule = &scheduleExpr
 
 	owned, err := listOwnedJobs(ctx, r.Client, cj)
 	if err != nil {
+		result = metrics.ResultError
 		return ctrl.Result{}, err
 	}
 	sortJobsNewestFirst(owned)
@@ -206,8 +235,14 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if requeue < time.Minute {
 		requeue = time.Minute
 	}
-	if _, err := r.patchStatus(ctx, cjm); err != nil {
+	res, err := r.patchStatus(ctx, cjm)
+	if err != nil {
+		result = metrics.ResultError
 		return ctrl.Result{}, err
+	}
+	if res.Requeue {
+		result = metrics.ResultRequeue
+		return res, nil
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }

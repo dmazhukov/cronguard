@@ -82,6 +82,7 @@ func main() {
 	lister := &controller.CachedLister{Client: mgr.GetClient()}
 	ctrlmetrics := metrics.NewCollector(lister)
 	prometheus.DefaultRegisterer.MustRegister(ctrlmetrics)
+	metrics.MustRegister(prometheus.DefaultRegisterer)
 
 	// build_info
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
