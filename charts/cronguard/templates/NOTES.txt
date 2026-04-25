@@ -1,0 +1,40 @@
+{{- $fullname := include "cronguard.fullname" . }}
+CronGuard {{ .Chart.AppVersion }} is now installed.
+
+  Release name:  {{ .Release.Name }}
+  Namespace:     {{ .Release.Namespace }}
+  Watch scope:   {{ if .Values.namespace }}{{ .Values.namespace }} (single){{ else }}cluster-wide{{ end }}
+  Replicas:      {{ .Values.replicaCount }}{{ if .Values.leaderElection.enabled }} (leader-election ON){{ end }}
+
+Verify the operator:
+
+  kubectl -n {{ .Release.Namespace }} get deploy {{ $fullname }}
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ $fullname }} -c manager
+
+Apply a sample CronJobMonitor (after applying or having a CronJob):
+
+  apiVersion: monitoring.cronguard.io/v1alpha1
+  kind: CronJobMonitor
+  metadata:
+    name: my-job
+  spec:
+    cronJobRef:
+      name: my-cronjob
+    schedule: "0 2 * * *"
+    maxConsecutiveFailures: 2
+    alertAfterMissedRuns: 2
+
+Then watch its status:
+
+  kubectl get cronjobmonitor
+  kubectl describe cronjobmonitor my-job
+
+Metrics endpoint:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $fullname }}-metrics {{ .Values.metrics.port }}:{{ .Values.metrics.port }}
+  curl localhost:{{ .Values.metrics.port }}/metrics | grep cronguard_
+
+{{- if .Values.serviceMonitor.enabled }}
+
+ServiceMonitor enabled — Prometheus operator users should see scraping kick in within ~30s.
+{{- end }}

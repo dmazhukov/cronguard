@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]},
+        "tag": {"type": "string"}
+      },
+      "required": ["repository", "pullPolicy"]
+    },
+    "replicaCount": {"type": "integer", "minimum": 1, "maximum": 10},
+    "namespace": {"type": "string"},
+    "leaderElection": {
+      "type": "object",
+      "properties": {"enabled": {"type": "boolean"}}
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+    },
+    "healthProbe": {
+      "type": "object",
+      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "interval": {"type": "string"},
+        "scrapeTimeout": {"type": "string"}
+      }
+    },
+    "crds": {
+      "type": "object",
+      "properties": {"install": {"type": "boolean"}}
+    }
+  }
+}
