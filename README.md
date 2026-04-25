@@ -21,19 +21,40 @@ CronGuard replaces that with a declarative SLO per CronJob.
 
 ## Quickstart
 
-```bash
-# Install CRDs and the operator
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.1.0/install.yaml
+### Helm (OCI)
 
-# Apply a sample
+```bash
+helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
+  --version 0.2.0 \
+  --namespace cronguard-system --create-namespace
+```
+
+### Helm (GitHub Pages)
+
+```bash
+helm repo add cronguard https://dmazhukov.github.io/cronguard/
+helm repo update
+helm install cronguard cronguard/cronguard --version 0.2.0 \
+  --namespace cronguard-system --create-namespace
+```
+
+### Raw manifests
+
+```bash
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.2.0/install.yaml
+```
+
+Apply a sample monitor:
+
+```bash
 kubectl apply -f config/samples/cronjob_example.yaml
 kubectl apply -f config/samples/monitoring_v1alpha1_cronjobmonitor.yaml
-
-# Check it
 kubectl get cronjobmonitors
 # NAME                  SCHEDULE      LASTSUCCESS   CONSECFAILS   MISSED   READY   AGE
 # nightly-settlement    0 2 * * *     5m            0             0        True    10m
 ```
+
+See [docs/distribution.md](docs/distribution.md) for the full installation reference and all configuration knobs.
 
 ## Example
 
