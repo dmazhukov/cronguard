@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-25
+
+### Fixed
+- `CachedLister.List` errors are now logged at V(1) instead of being silently swallowed.
+
+### Removed
+- Unused CertManager helpers from `test/e2e` and `test/utils` (Phase 1 has no webhooks).
+
+### Tests
+- Added envtest for ResourceVersion-conflict reconcile retry.
+- Added unit tests for `cronguard_last_duration_seconds`, `cronguard_last_failure_timestamp_seconds`, `cronguard_next_expected_timestamp_seconds`, and `cronguard_running_jobs`.
+
+### Refactor
+- Extracted the Job→CronJobMonitor mapper from `SetupWithManager` into a named method.
+
 ## [0.1.1] - 2026-04-25
 
 ### Fixed
