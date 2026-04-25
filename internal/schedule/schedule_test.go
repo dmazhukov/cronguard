@@ -108,3 +108,56 @@ func TestMissedRunsSinceWithinGrace(t *testing.T) {
 		t.Fatalf("MissedRunsSince = %d, want 0", got)
 	}
 }
+
+// TestPrevWeeklyExercisesBackwardWalk uses a weekly Monday 9am schedule and
+// queries Friday — forces the backward-walk loop to step back multiple days
+// before finding a candidate <= the query time.
+func TestPrevWeeklyExercisesBackwardWalk(t *testing.T) {
+	s, err := schedule.Parse("0 9 * * 1") // Monday 09:00
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// Friday 2026-04-24 12:00 UTC — most recent Monday 09:00 is 2026-04-20.
+	from := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	got := s.Prev(from)
+	want := time.Date(2026, 4, 20, 9, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("Prev = %v, want %v", got, want)
+	}
+}
+
+// TestPrevHourlyAdvancesInnerLoop forces the inner forward-walk loop in Prev
+// to advance multiple times. With an hourly schedule queried late in the day,
+// candidate from `walkStart = at - 24h` is many hours before `at`; the inner
+// loop walks forward through ~12 slots before stopping.
+func TestPrevHourlyAdvancesInnerLoop(t *testing.T) {
+	s, err := schedule.Parse("0 * * * *") // every hour
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	from := time.Date(2026, 4, 24, 12, 30, 0, 0, time.UTC)
+	got := s.Prev(from)
+	want := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("Prev = %v, want %v", got, want)
+	}
+}
+
+// TestMissedRunsSinceLastStartInFuture covers the early-return path in
+// MissedRunsSince when the last successful start is at or after `now-grace`.
+func TestMissedRunsSinceLastStartInFuture(t *testing.T) {
+	s, err := schedule.Parse("0 * * * *")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	// lastStart in the future relative to now.
+	lastStart := now.Add(time.Hour)
+	if got := s.MissedRunsSince(lastStart, now, 60*time.Second); got != 0 {
+		t.Fatalf("MissedRunsSince (lastStart in future) = %d, want 0", got)
+	}
+	// lastStart equal to now-grace boundary — also early-returns 0.
+	if got := s.MissedRunsSince(now.Add(-60*time.Second), now, 60*time.Second); got != 0 {
+		t.Fatalf("MissedRunsSince (boundary) = %d, want 0", got)
+	}
+}
