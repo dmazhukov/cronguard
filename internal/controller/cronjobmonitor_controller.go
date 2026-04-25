@@ -1,33 +1,29 @@
 /*
 Copyright 2026 Dmitrii Zhukov.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0.
 */
 
 package controller
 
 import (
 	"context"
+	"fmt"
 
+	batchv1 "k8s.io/api/batch/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 )
 
-// CronJobMonitorReconciler reconciles a CronJobMonitor object
+// CronJobMonitorReconciler reconciles a CronJobMonitor object.
 type CronJobMonitorReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -36,28 +32,69 @@ type CronJobMonitorReconciler struct {
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors/finalizers,verbs=update
+// +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the CronJobMonitor object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/reconcile
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := log.FromContext(ctx).WithValues("cronjobmonitor", req.NamespacedName)
 
-	// TODO(user): your logic here
+	cjm := &monitoringv1alpha1.CronJobMonitor{}
+	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
+	}
 
+	cj := &batchv1.CronJob{}
+	cjKey := types.NamespacedName{Namespace: cjm.Namespace, Name: cjm.Spec.CronJobRef.Name}
+	if err := r.Get(ctx, cjKey, cj); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
+				fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
+			return r.patchStatus(ctx, cjm)
+		}
+		return ctrl.Result{}, fmt.Errorf("get CronJob: %w", err)
+	}
+
+	_ = logger
+	// Placeholder: later tasks compute SLO state. For now, mark reconciled=true.
+	meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+		Type:               monitoringv1alpha1.ConditionReconciled,
+		Status:             metav1.ConditionTrue,
+		Reason:             monitoringv1alpha1.ReasonReconcileSuccess,
+		Message:            "CronJob resolved",
+		ObservedGeneration: cjm.Generation,
+	})
+	cjm.Status.ObservedGeneration = cjm.Generation
+	return r.patchStatus(ctx, cjm)
+}
+
+func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.CronJobMonitor, reason, message string) {
+	meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+		Type:               monitoringv1alpha1.ConditionReconciled,
+		Status:             metav1.ConditionFalse,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: cjm.Generation,
+	})
+	cjm.Status.ObservedGeneration = cjm.Generation
+}
+
+func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitoringv1alpha1.CronJobMonitor) (ctrl.Result, error) {
+	if err := r.Status().Update(ctx, cjm); err != nil {
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("status update: %w", err)
+	}
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *CronJobMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&monitoringv1alpha1.CronJobMonitor{}).
-		Named("cronjobmonitor").
+		Owns(&batchv1.Job{}).
 		Complete(r)
 }
