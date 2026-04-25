@@ -75,7 +75,7 @@ Example alerts (PromQL):
 (time() - cronguard_last_success_timestamp_seconds) > 90000
 
 # Execution SLO breached
-cronguard_condition{type="ExecutionHealthy", status="false"} == 0
+cronguard_condition{type="ExecutionHealthy"} == 0
 ```
 
 ## Architecture
