@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cronguard.fullname" . }}-manager
+  labels:
+    {{- include "cronguard.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["monitoring.cronguard.io"]
+    resources: [cronjobmonitors]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["monitoring.cronguard.io"]
+    resources: [cronjobmonitors/status]
+    verbs: [get, update, patch]
+  - apiGroups: ["monitoring.cronguard.io"]
+    resources: [cronjobmonitors/finalizers]
+    verbs: [update]
+  - apiGroups: ["batch"]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
