@@ -1,0 +1,74 @@
+# Default values for cronguard.
+
+image:
+  repository: ghcr.io/dmazhukov/cronguard
+  pullPolicy: IfNotPresent
+  # Defaults to .Chart.AppVersion when empty.
+  tag: ""
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Number of operator replicas. Set to 2 for HA — leader election ensures only
+# one reconciler is active at a time.
+replicaCount: 1
+
+# Restrict the operator to a single namespace. Empty means cluster-wide watch.
+namespace: ""
+
+leaderElection:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+metrics:
+  port: 8080
+healthProbe:
+  port: 8081
+
+# ServiceMonitor for prometheus-operator integrations.
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  honorLabels: false
+
+# CRD installation. The Helm 3 convention is to keep CRDs in crds/ which are
+# installed on `helm install` but NEVER touched on `helm upgrade`. Set to false
+# to skip — useful when CRDs are managed externally (e.g. by a separate apply).
+crds:
+  install: true
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+priorityClassName: ""
+
+terminationGracePeriodSeconds: 30
