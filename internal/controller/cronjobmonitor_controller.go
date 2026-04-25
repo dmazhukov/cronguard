@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -18,10 +19,10 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 	"github.com/dmazhukov/cronguard/internal/history"
+	"github.com/dmazhukov/cronguard/internal/schedule"
 )
 
 // CronJobMonitorReconciler reconciles a CronJobMonitor object.
@@ -38,8 +39,6 @@ type CronJobMonitorReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues("cronjobmonitor", req.NamespacedName)
-
 	cjm := &monitoringv1alpha1.CronJobMonitor{}
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -50,16 +49,61 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	cj := &batchv1.CronJob{}
 	cjKey := types.NamespacedName{Namespace: cjm.Namespace, Name: cjm.Spec.CronJobRef.Name}
+	cronJobFound := true
 	if err := r.Get(ctx, cjKey, cj); err != nil {
-		if apierrors.IsNotFound(err) {
-			r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
-				fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
-			return r.patchStatus(ctx, cjm)
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("get CronJob: %w", err)
 		}
-		return ctrl.Result{}, fmt.Errorf("get CronJob: %w", err)
+		cronJobFound = false
 	}
 
-	_ = logger
+	if !cronJobFound {
+		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
+			fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
+		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+			Status:             metav1.ConditionUnknown,
+			Reason:             monitoringv1alpha1.ReasonNoSchedule,
+			Message:            "no schedule available",
+			ObservedGeneration: cjm.Generation,
+		})
+		evaluateExecutionHealthy(cjm)
+		evaluateDurationHealthy(cjm)
+		evaluateReady(cjm)
+		return r.patchStatus(ctx, cjm)
+	}
+
+	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
+		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobSuspended,
+			"referenced CronJob has suspend=true")
+		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+			Status:             metav1.ConditionUnknown,
+			Reason:             monitoringv1alpha1.ReasonSuspended,
+			Message:            "CronJob is suspended; missed-run counter frozen",
+			ObservedGeneration: cjm.Generation,
+		})
+		evaluateExecutionHealthy(cjm)
+		evaluateDurationHealthy(cjm)
+		evaluateReady(cjm)
+		return r.patchStatus(ctx, cjm)
+	}
+
+	scheduleExpr := cjm.Spec.Schedule
+	if scheduleExpr == "" {
+		scheduleExpr = cj.Spec.Schedule
+	}
+
+	parsed, err := schedule.Parse(scheduleExpr)
+	if err != nil {
+		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidSchedule,
+			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
+		evaluateExecutionHealthy(cjm)
+		evaluateDurationHealthy(cjm)
+		evaluateReady(cjm)
+		return r.patchStatus(ctx, cjm)
+	}
+	cjm.Status.ResolvedSchedule = &scheduleExpr
 
 	owned, err := listOwnedJobs(ctx, r.Client, cj)
 	if err != nil {
@@ -78,7 +122,6 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	cjm.Status.RecentExecutions = history.Merge(cjm.Status.RecentExecutions, incoming, limit)
 
-	// Populate last-success / last-failure / last-schedule timestamps.
 	cjm.Status.LastSuccessTime = nil
 	cjm.Status.LastFailureTime = nil
 	cjm.Status.LastScheduleTime = nil
@@ -96,6 +139,37 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	now := time.Now()
+	nextExpected := parsed.Next(now)
+	nextT := metav1.NewTime(nextExpected)
+	cjm.Status.NextExpectedTime = &nextT
+
+	// Compute drift for the most recent run.
+	if cjm.Status.LastScheduleTime != nil {
+		expected := parsed.Prev(cjm.Status.LastScheduleTime.Time)
+		if !expected.IsZero() {
+			drift := schedule.Drift(cjm.Status.LastScheduleTime.Time, expected)
+			cjm.Status.ScheduleDriftSeconds = int32(drift.Seconds())
+			if len(cjm.Status.RecentExecutions) > 0 {
+				rec := &cjm.Status.RecentExecutions[0]
+				exp := metav1.NewTime(expected)
+				rec.ExpectedStartTime = &exp
+				driftSec := int32(drift.Seconds())
+				rec.DriftSeconds = &driftSec
+			}
+		}
+	}
+
+	// Missed-runs count since last observed start (or CJM creation time if no runs).
+	var lastStart time.Time
+	if cjm.Status.LastScheduleTime != nil {
+		lastStart = cjm.Status.LastScheduleTime.Time
+	} else {
+		lastStart = cjm.CreationTimestamp.Time
+	}
+	missed := int32(parsed.MissedRunsSince(lastStart, now, time.Duration(cjm.Spec.GracePeriodSeconds)*time.Second))
+
+	evaluateScheduleHealthy(cjm, missed)
 	evaluateExecutionHealthy(cjm)
 	evaluateDurationHealthy(cjm)
 
@@ -103,12 +177,21 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Type:               monitoringv1alpha1.ConditionReconciled,
 		Status:             metav1.ConditionTrue,
 		Reason:             monitoringv1alpha1.ReasonReconcileSuccess,
-		Message:            "CronJob resolved",
+		Message:            "CronJob resolved, schedule parsed",
 		ObservedGeneration: cjm.Generation,
 	})
 	evaluateReady(cjm)
 	cjm.Status.ObservedGeneration = cjm.Generation
-	return r.patchStatus(ctx, cjm)
+
+	// Requeue at next expected run + small buffer, or in 1 minute at minimum.
+	requeue := time.Until(nextExpected) + 5*time.Second
+	if requeue < time.Minute {
+		requeue = time.Minute
+	}
+	if _, err := r.patchStatus(ctx, cjm); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
 func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.CronJobMonitor, reason, message string) {
