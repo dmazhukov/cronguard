@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-settlement
+  namespace: default
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: settlement
+              image: busybox
+              command: ["/bin/sh", "-c", "echo settling; sleep 2; exit 0"]

@@ -1,9 +1,14 @@
 apiVersion: monitoring.cronguard.io/v1alpha1
 kind: CronJobMonitor
 metadata:
-  labels:
-    app.kubernetes.io/name: cronguard
-    app.kubernetes.io/managed-by: kustomize
-  name: cronjobmonitor-sample
+  name: nightly-settlement
+  namespace: default
 spec:
-  # TODO(user): Add fields here
+  cronJobRef:
+    name: nightly-settlement
+  schedule: "0 2 * * *"
+  maxDurationSeconds: 1800
+  maxConsecutiveFailures: 2
+  alertAfterMissedRuns: 2
+  gracePeriodSeconds: 60
+  historyLimit: 10
