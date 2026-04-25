@@ -17,6 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 )
 
@@ -343,6 +345,66 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(got.Status.LastFailureTime).NotTo(BeNil())
 			g.Expect(got.Status.RecentExecutions).To(HaveLen(1))
 			g.Expect(got.Status.RecentExecutions[0].Phase).To(Equal(monitoringv1alpha1.ExecutionPhaseFailed))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("emits a ConsecutiveFailures Warning event when ExecutionHealthy flips to False", func() {
+		cj := makeCronJob(namespace, "fails-evt", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		now := time.Now()
+		for i := 0; i < 2; i++ {
+			job := makeOwnedJob(namespace, fmt.Sprintf("fails-evt-%d", i), cj, now.Add(-time.Duration(i+1)*time.Hour))
+			Expect(k8sClient.Create(ctx, job)).To(Succeed())
+			job.Status = batchv1.JobStatus{
+				Failed:    1,
+				StartTime: &metav1.Time{Time: now.Add(-time.Duration(i+1) * time.Hour)},
+				Conditions: []batchv1.JobCondition{
+					{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+					{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+			DeferCleanup(func(j *batchv1.Job) func() { return func() { Expect(k8sClient.Delete(ctx, j)).To(Succeed()) } }(job))
+		}
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "fails-evt-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "fails-evt"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		// Wait for the condition to flip to False.
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "fails-evt-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+
+		// Verify a Warning event with reason ConsecutiveFailures was emitted.
+		Eventually(func(g Gomega) {
+			var events corev1.EventList
+			g.Expect(k8sClient.List(ctx, &events, client.InNamespace(namespace))).To(Succeed())
+			found := false
+			for _, e := range events.Items {
+				if e.InvolvedObject.Name == "fails-evt-mon" &&
+					e.Reason == monitoringv1alpha1.ReasonConsecutiveFailures &&
+					e.Type == corev1.EventTypeWarning {
+					found = true
+					break
+				}
+			}
+			g.Expect(found).To(BeTrue(), "expected Warning ConsecutiveFailures event for fails-evt-mon")
 		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 })

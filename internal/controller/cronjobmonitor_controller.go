@@ -73,6 +73,16 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
 	}
 
+	// Snapshot prior axis-condition statuses so we can detect threshold
+	// crossings after evaluators run and emit one-shot Kubernetes Events.
+	// We deep-copy because meta.SetStatusCondition mutates the underlying
+	// slice elements in place when the condition already exists, which
+	// would alias these pointers to the post-mutation values.
+	priorReconciled := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+	priorScheduleHealthy := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+	priorExecutionHealthy := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
+	priorDurationHealthy := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionDurationHealthy)
+
 	cj := &batchv1.CronJob{}
 	cjKey := types.NamespacedName{Namespace: cjm.Namespace, Name: cjm.Spec.CronJobRef.Name}
 	cronJobFound := true
@@ -246,6 +256,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if requeue < time.Minute {
 		requeue = time.Minute
 	}
+	r.emitTransitionEvents(cjm, priorReconciled, priorScheduleHealthy, priorExecutionHealthy, priorDurationHealthy)
 	res, err := r.patchStatus(ctx, cjm)
 	if err != nil {
 		result = metrics.ResultError
@@ -279,6 +290,59 @@ func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.Cr
 		ObservedGeneration: cjm.Generation,
 	})
 	cjm.Status.ObservedGeneration = cjm.Generation
+}
+
+// snapshotCondition returns a deep copy of the named condition, or nil if
+// it is not present. The returned pointer is decoupled from the live
+// status slice, so subsequent meta.SetStatusCondition calls do not alias
+// its fields.
+func snapshotCondition(conds []metav1.Condition, t string) *metav1.Condition {
+	if c := meta.FindStatusCondition(conds, t); c != nil {
+		cp := *c
+		return &cp
+	}
+	return nil
+}
+
+// emitTransitionEvents compares prior axis-condition statuses against the
+// post-evaluation values and emits Kubernetes events for SLO threshold
+// crossings: True/Unknown -> False on the three healthy axes, and
+// False -> True on Reconciled (recovery signal).
+func (r *CronJobMonitorReconciler) emitTransitionEvents(
+	cjm *monitoringv1alpha1.CronJobMonitor,
+	priorReconciled, priorScheduleHealthy, priorExecutionHealthy, priorDurationHealthy *metav1.Condition,
+) {
+	if r.Recorder == nil {
+		return
+	}
+	type axis struct {
+		typ   string
+		prior *metav1.Condition
+	}
+	axes := []axis{
+		{monitoringv1alpha1.ConditionScheduleHealthy, priorScheduleHealthy},
+		{monitoringv1alpha1.ConditionExecutionHealthy, priorExecutionHealthy},
+		{monitoringv1alpha1.ConditionDurationHealthy, priorDurationHealthy},
+	}
+	for _, a := range axes {
+		curr := meta.FindStatusCondition(cjm.Status.Conditions, a.typ)
+		if curr == nil || curr.Status != metav1.ConditionFalse {
+			continue
+		}
+		// Emit when prior was missing, True, or Unknown — i.e., not already False.
+		if a.prior != nil && a.prior.Status == metav1.ConditionFalse {
+			continue
+		}
+		r.Recorder.Event(cjm, corev1.EventTypeWarning, curr.Reason, curr.Message)
+	}
+
+	// Recovery: Reconciled False -> True
+	if priorReconciled != nil && priorReconciled.Status == metav1.ConditionFalse {
+		curr := meta.FindStatusCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+		if curr != nil && curr.Status == metav1.ConditionTrue {
+			r.Recorder.Event(cjm, corev1.EventTypeNormal, monitoringv1alpha1.ReasonReconcileSuccess, curr.Message)
+		}
+	}
 }
 
 func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitoringv1alpha1.CronJobMonitor) (ctrl.Result, error) {
