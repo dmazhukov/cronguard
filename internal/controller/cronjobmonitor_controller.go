@@ -355,53 +355,56 @@ func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitor
 	return ctrl.Result{}, nil
 }
 
+// mapJobToMonitors enqueues reconcile requests for any CronJobMonitor whose
+// cronJobRef matches the CronJob that owns the given Job (looked up by UID
+// via OwnerReferences -> CronJob.UID -> CronJob.Name).
+func (r *CronJobMonitorReconciler) mapJobToMonitors(ctx context.Context, obj client.Object) []ctrl.Request {
+	job, ok := obj.(*batchv1.Job)
+	if !ok {
+		return nil
+	}
+	ownerUID := ""
+	for _, ref := range job.OwnerReferences {
+		if ref.Controller != nil && *ref.Controller && ref.Kind == "CronJob" {
+			ownerUID = string(ref.UID)
+			break
+		}
+	}
+	if ownerUID == "" {
+		return nil
+	}
+	var cjmList monitoringv1alpha1.CronJobMonitorList
+	if err := r.List(ctx, &cjmList, client.InNamespace(job.Namespace)); err != nil {
+		return nil
+	}
+	var cjList batchv1.CronJobList
+	if err := r.List(ctx, &cjList, client.InNamespace(job.Namespace)); err != nil {
+		return nil
+	}
+	cjNameByUID := make(map[string]string, len(cjList.Items))
+	for _, cj := range cjList.Items {
+		cjNameByUID[string(cj.UID)] = cj.Name
+	}
+	ownerName := cjNameByUID[ownerUID]
+	if ownerName == "" {
+		return nil
+	}
+	var out []ctrl.Request
+	for _, cjm := range cjmList.Items {
+		if cjm.Spec.CronJobRef.Name == ownerName {
+			out = append(out, ctrl.Request{NamespacedName: types.NamespacedName{
+				Namespace: cjm.Namespace, Name: cjm.Name,
+			}})
+		}
+	}
+	return out
+}
+
 // SetupWithManager registers the reconciler with the manager, watching
 // CronJobMonitor objects and enqueueing requests for related Job events.
 func (r *CronJobMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	mapFn := func(ctx context.Context, obj client.Object) []ctrl.Request {
-		job, ok := obj.(*batchv1.Job)
-		if !ok {
-			return nil
-		}
-		ownerUID := ""
-		for _, ref := range job.OwnerReferences {
-			if ref.Controller != nil && *ref.Controller && ref.Kind == "CronJob" {
-				ownerUID = string(ref.UID)
-				break
-			}
-		}
-		if ownerUID == "" {
-			return nil
-		}
-		var cjmList monitoringv1alpha1.CronJobMonitorList
-		if err := r.List(ctx, &cjmList, client.InNamespace(job.Namespace)); err != nil {
-			return nil
-		}
-		var cjList batchv1.CronJobList
-		if err := r.List(ctx, &cjList, client.InNamespace(job.Namespace)); err != nil {
-			return nil
-		}
-		cjNameByUID := make(map[string]string, len(cjList.Items))
-		for _, cj := range cjList.Items {
-			cjNameByUID[string(cj.UID)] = cj.Name
-		}
-		ownerName := cjNameByUID[ownerUID]
-		if ownerName == "" {
-			return nil
-		}
-		var out []ctrl.Request
-		for _, cjm := range cjmList.Items {
-			if cjm.Spec.CronJobRef.Name == ownerName {
-				out = append(out, ctrl.Request{NamespacedName: types.NamespacedName{
-					Namespace: cjm.Namespace, Name: cjm.Name,
-				}})
-			}
-		}
-		return out
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&monitoringv1alpha1.CronJobMonitor{}).
-		Watches(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(mapFn)).
+		Watches(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(r.mapJobToMonitors)).
 		Complete(r)
 }
