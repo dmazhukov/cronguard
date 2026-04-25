@@ -6,6 +6,7 @@ Licensed under the Apache License, Version 2.0.
 package controller
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -90,6 +91,99 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(got.Status.RecentExecutions).To(HaveLen(1))
 			g.Expect(got.Status.RecentExecutions[0].Phase).To(Equal(monitoringv1alpha1.ExecutionPhaseSucceeded))
 			g.Expect(got.Status.LastSuccessTime).NotTo(BeNil())
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("flips ExecutionHealthy=False after consecutive failures", func() {
+		cj := makeCronJob(namespace, "fails-1", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		now := time.Now()
+		for i := 0; i < 2; i++ {
+			job := makeOwnedJob(namespace, fmt.Sprintf("fails-1-%d", i), cj, now.Add(-time.Duration(i+1)*time.Hour))
+			Expect(k8sClient.Create(ctx, job)).To(Succeed())
+			// K8s 1.35 requires FailureTarget=True ahead of Failed=True, and
+			// refuses completionTime on a Job that is not Complete=True.
+			job.Status = batchv1.JobStatus{
+				Failed:    1,
+				StartTime: &metav1.Time{Time: now.Add(-time.Duration(i+1) * time.Hour)},
+				Conditions: []batchv1.JobCondition{
+					{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+					{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+			DeferCleanup(func(j *batchv1.Job) func() { return func() { Expect(k8sClient.Delete(ctx, j)).To(Succeed()) } }(job))
+		}
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "fails-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "fails-1"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "fails-1-mon", Namespace: namespace}, got)).To(Succeed())
+			g.Expect(got.Status.ConsecutiveFailures).To(BeNumerically(">=", 2))
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonConsecutiveFailures))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("flips DurationHealthy=False when a completed Job exceeds maxDurationSeconds", func() {
+		cj := makeCronJob(namespace, "slow-1", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		now := time.Now()
+		job := makeOwnedJob(namespace, "slow-1-0", cj, now.Add(-30*time.Minute))
+		Expect(k8sClient.Create(ctx, job)).To(Succeed())
+		// K8s 1.35 requires SuccessCriteriaMet=True ahead of Complete=True.
+		job.Status = batchv1.JobStatus{
+			Succeeded:      1,
+			StartTime:      &metav1.Time{Time: now.Add(-30 * time.Minute)},
+			CompletionTime: &metav1.Time{Time: now.Add(-5 * time.Minute)}, // 25 min duration
+			Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, job)).To(Succeed()) })
+
+		maxDur := int32(600) // 10 minutes
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "slow-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "slow-1"},
+				MaxDurationSeconds:     &maxDur,
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "slow-1-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionDurationHealthy)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonDurationExceeded))
 		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 })

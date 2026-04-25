@@ -96,6 +96,9 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	evaluateExecutionHealthy(cjm)
+	evaluateDurationHealthy(cjm)
+
 	meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 		Type:               monitoringv1alpha1.ConditionReconciled,
 		Status:             metav1.ConditionTrue,
@@ -103,6 +106,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Message:            "CronJob resolved",
 		ObservedGeneration: cjm.Generation,
 	})
+	evaluateReady(cjm)
 	cjm.Status.ObservedGeneration = cjm.Generation
 	return r.patchStatus(ctx, cjm)
 }
