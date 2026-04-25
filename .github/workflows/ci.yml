@@ -72,3 +72,17 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  prometheus-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install promtool
+        run: |
+          PROM_VERSION=2.55.1
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz" | tar -xz
+          sudo mv "prometheus-${PROM_VERSION}.linux-amd64/promtool" /usr/local/bin/
+      - name: Validate rules
+        run: |
+          # The file is a PrometheusRule CRD; promtool wants bare RuleGroups.
+          yq eval '.spec' config/prometheus/rules.yaml | promtool check rules /dev/stdin
