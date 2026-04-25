@@ -1,11 +1,8 @@
-# This file is published to https://dmazhukov.github.io/cronguard/artifacthub-repo.yml
-# by the release workflow. Artifact Hub fetches it to verify ownership of the Helm
-# repo registered through https://artifacthub.io/control-panel.
-#
-# repositoryID is issued by Artifact Hub on first registration. Until the repo is
-# registered, this file is harmless — Artifact Hub simply does not list the chart.
+# Published to https://dmazhukov.github.io/cronguard/artifacthub-repo.yml by the
+# release workflow. Artifact Hub fetches it to verify ownership of the Helm repo
+# registered at https://artifacthub.io/packages/helm/cronguard/cronguard.
 
-repositoryID: 00000000-0000-0000-0000-000000000000   # TODO: replace post-registration
+repositoryID: eaac62c4-2f02-4cd7-844b-44c94296f7d9
 owners:
   - name: Dmitrii Zhukov
     email: dmitry0983@gmail.com
