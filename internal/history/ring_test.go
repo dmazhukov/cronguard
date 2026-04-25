@@ -107,3 +107,47 @@ func TestRingRejectsZeroLimit(t *testing.T) {
 		t.Fatalf("Merge with limit=0 returned %v, want nil", got)
 	}
 }
+
+// TestRingShouldReplaceByLaterStart covers the primary "later StartTime wins"
+// branch in shouldReplace AND the JobName tie-break in sort. Two existing
+// records share a StartTime to exercise the sort tie-break; incoming has a
+// later StartTime to exercise the replace path.
+func TestRingShouldReplaceByLaterStart(t *testing.T) {
+	now := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	existing := []monitoringv1alpha1.ExecutionRecord{
+		rec("job-1", now, monitoringv1alpha1.ExecutionPhaseRunning),
+		rec("job-2", now, monitoringv1alpha1.ExecutionPhaseRunning),
+	}
+	incoming := []monitoringv1alpha1.ExecutionRecord{
+		rec("job-1", now.Add(5*time.Minute), monitoringv1alpha1.ExecutionPhaseSucceeded),
+	}
+	got := history.Merge(existing, incoming, 10)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].JobName != "job-1" {
+		t.Fatalf("got[0] = %q, want job-1 (newest start)", got[0].JobName)
+	}
+	if got[0].Phase != monitoringv1alpha1.ExecutionPhaseSucceeded {
+		t.Fatalf("got[0].Phase = %q, want Succeeded", got[0].Phase)
+	}
+}
+
+// TestRingKeepsExistingWhenIncomingIsEarlier covers the "return false" path
+// in shouldReplace — existing has a later StartTime, incoming must lose.
+func TestRingKeepsExistingWhenIncomingIsEarlier(t *testing.T) {
+	now := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	existing := []monitoringv1alpha1.ExecutionRecord{
+		rec("job-1", now, monitoringv1alpha1.ExecutionPhaseSucceeded),
+	}
+	incoming := []monitoringv1alpha1.ExecutionRecord{
+		rec("job-1", now.Add(-5*time.Minute), monitoringv1alpha1.ExecutionPhaseRunning),
+	}
+	got := history.Merge(existing, incoming, 10)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Phase != monitoringv1alpha1.ExecutionPhaseSucceeded {
+		t.Fatalf("got[0].Phase = %q, want Succeeded (existing kept)", got[0].Phase)
+	}
+}
