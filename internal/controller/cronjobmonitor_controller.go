@@ -42,6 +42,8 @@ type CronJobMonitorReconciler struct {
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
+// Reconcile reads the CronJobMonitor, inspects the referenced CronJob and its
+// Jobs, and updates status conditions and execution history accordingly.
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	cjm := &monitoringv1alpha1.CronJobMonitor{}
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
@@ -183,7 +185,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	} else {
 		lastStart = cjm.CreationTimestamp.Time
 	}
-	missed := int32(parsed.MissedRunsSince(lastStart, now, time.Duration(cjm.Spec.GracePeriodSeconds)*time.Second))
+	missed := int32(parsed.MissedRunsSince(lastStart, now, time.Duration(cjm.Spec.GracePeriodSeconds)*time.Second)) //nolint:gosec // G115: missed-run count is bounded by reconcile cadence and fits in int32
 
 	evaluateScheduleHealthy(cjm, missed)
 	evaluateExecutionHealthy(cjm)
@@ -231,6 +233,8 @@ func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitor
 	return ctrl.Result{}, nil
 }
 
+// SetupWithManager registers the reconciler with the manager, watching
+// CronJobMonitor objects and enqueueing requests for related Job events.
 func (r *CronJobMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	mapFn := func(ctx context.Context, obj client.Object) []ctrl.Request {
 		job, ok := obj.(*batchv1.Job)
