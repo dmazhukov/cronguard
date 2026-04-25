@@ -78,6 +78,10 @@ Example alerts (PromQL):
 cronguard_condition{type="ExecutionHealthy"} == 0
 ```
 
+## Dashboards
+
+A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) — six panels covering all CronGuard metrics. See [the dashboards README](config/grafana/README.md) for import instructions.
+
 ## Architecture
 
 ```
