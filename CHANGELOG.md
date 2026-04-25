@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-25
+
+### Added — Distribution & observability
+
+- **Helm chart** at `charts/cronguard/` with full configurability (image, replicas, namespace scope, leader election, resources, security context, ServiceMonitor, PrometheusRule). CRD ships in `crds/` (Helm 3 native).
+- **Grafana dashboard** at `config/grafana/cronguard-dashboard.json` — six panels (table, time-since-last-success stat, drift heatmap, last-duration timeseries, conditions state-timeline, reconcile rate). Vanilla JSON for Grafana OSS or Cloud.
+- **PrometheusRule** at `config/prometheus/rules.yaml` — five default alerts (`CronGuardScheduleMissed`, `CronGuardConsecutiveFailures`, `CronGuardDurationExceeded`, `CronGuardNotReady`, `CronGuardOperatorDown`). Also available as opt-in chart template via `prometheusRule.enabled=true`.
+- **Runbook stubs** at `docs/runbooks/` — placeholders linked from each alert's `runbook_url`. Concrete remediation lands in a follow-up patch.
+- **Kind-based e2e workflow** `.github/workflows/e2e.yml` — spins up a real cluster, builds and loads the image, installs via Helm, applies sample manifests, scrapes `/metrics`, asserts required metric families. Runs on every push/PR plus nightly. `make e2e` for local runs.
+- **Helm chart publishing** in `release.yml` — packages the chart and publishes to both `oci://ghcr.io/dmazhukov/charts/cronguard` (Helm 3.8+ OCI) and `https://dmazhukov.github.io/cronguard/` (GitHub Pages Helm repo). `peaceiris/actions-gh-pages@v4` creates the orphan branch on first run.
+- **Artifact Hub publication** prep — `artifacthub-repo.yml` published alongside the chart; UUID populated post-registration.
+- **README walkthrough** — collapsible install walkthrough in the top-level README plus a synthetic asciicast at `docs/cast/install.cast` and recording instructions for replacing it with a real session.
+- **Distribution docs** at `docs/distribution.md` — three install paths documented end-to-end.
+
+### CI
+
+- New `prometheus-rules` CI job runs `promtool check rules` on the standalone manifest.
+- New `e2e` workflow with concurrency group `e2e-${ref}`.
+- Release workflow gains a `chart` job (depends on `release`) with `gh-pages` concurrency group.
+
 ## [0.1.2] - 2026-04-25
 
 ### Fixed
