@@ -243,6 +243,48 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidSchedule))
 		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
+
+	It("populates LastFailureTime even when Job CompletionTime is nil", func() {
+		cj := makeCronJob(namespace, "fail-no-end", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		now := time.Now()
+		job := makeOwnedJob(namespace, "fail-no-end-0", cj, now.Add(-30*time.Minute))
+		Expect(k8sClient.Create(ctx, job)).To(Succeed())
+		// Failed Job in K8s 1.35: FailureTarget then Failed; CompletionTime stays nil.
+		job.Status = batchv1.JobStatus{
+			Failed:    1,
+			StartTime: &metav1.Time{Time: now.Add(-30 * time.Minute)},
+			Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, job)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "fail-no-end-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "fail-no-end"},
+				MaxConsecutiveFailures: 5, // high enough not to flip the SLO
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "fail-no-end-mon", Namespace: namespace}, got)).To(Succeed())
+			g.Expect(got.Status.LastFailureTime).NotTo(BeNil())
+			g.Expect(got.Status.RecentExecutions).To(HaveLen(1))
+			g.Expect(got.Status.RecentExecutions[0].Phase).To(Equal(monitoringv1alpha1.ExecutionPhaseFailed))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
 })
 
 // findCondition is a test helper.

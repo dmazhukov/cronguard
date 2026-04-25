@@ -179,10 +179,10 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			cjm.Status.LastScheduleTime = &t
 		}
 		if rec.Phase == monitoringv1alpha1.ExecutionPhaseSucceeded && cjm.Status.LastSuccessTime == nil {
-			cjm.Status.LastSuccessTime = rec.EndTime
+			cjm.Status.LastSuccessTime = pickEndOrStart(rec)
 		}
 		if rec.Phase == monitoringv1alpha1.ExecutionPhaseFailed && cjm.Status.LastFailureTime == nil {
-			cjm.Status.LastFailureTime = rec.EndTime
+			cjm.Status.LastFailureTime = pickEndOrStart(rec)
 		}
 	}
 
@@ -245,6 +245,18 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return res, nil
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+// pickEndOrStart returns the record's EndTime if set, else its StartTime.
+// Used for LastSuccess/LastFailure timestamps; in Kubernetes 1.35+ Failed
+// Jobs can have nil CompletionTime, so we fall back to StartTime to ensure
+// the metrics reflect that a terminal observation occurred.
+func pickEndOrStart(rec *monitoringv1alpha1.ExecutionRecord) *metav1.Time {
+	if rec.EndTime != nil {
+		return rec.EndTime
+	}
+	t := rec.StartTime
+	return &t
 }
 
 func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.CronJobMonitor, reason, message string) {
