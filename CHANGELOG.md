@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-25
+
+### Added
+
+- Artifact Hub ownership claim — `artifacthub-repo.yml` now contains the real `repositoryID` UUID issued by Artifact Hub. The cronguard Helm chart is now discoverable at https://artifacthub.io/packages/helm/cronguard/cronguard with verified-owner status.
+
 ## [0.2.1] - 2026-04-25
 
 ### Fixed (critical)
