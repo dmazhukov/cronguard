@@ -1,0 +1,54 @@
+# To install hooks locally:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit run --all-files   # one-time bulk run
+#
+# Hooks run on `git commit`. Skip with --no-verify (don't make a habit of it).
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^docs/cast/.*\.cast$'
+      - id: end-of-file-fixer
+        exclude: '^docs/cast/.*\.cast$'
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: '^charts/cronguard/templates/.*\.yaml$'   # Helm templates aren't valid YAML
+      - id: check-added-large-files
+        args: [--maxkb=500]
+        exclude: '^docs/cast/.*\.cast$'
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+      - id: go-vet
+      - id: go-mod-tidy
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.8.0
+    hooks:
+      - id: golangci-lint-full
+        args: [--timeout=5m]
+
+  - repo: local
+    hooks:
+      - id: helm-lint
+        name: helm lint
+        entry: helm lint charts/cronguard
+        language: system
+        pass_filenames: false
+        files: '^charts/cronguard/'
+
+      - id: promtool-check-rules
+        name: promtool check rules
+        entry: bash -c 'yq eval ".spec" config/prometheus/rules.yaml | promtool check rules /dev/stdin'
+        language: system
+        pass_filenames: false
+        files: '^config/prometheus/rules\.yaml$'
