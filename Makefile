@@ -90,6 +90,12 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
+.PHONY: e2e
+e2e: ## Run end-to-end test against a kind cluster.
+	@command -v kind >/dev/null 2>&1 || { echo >&2 "kind is required. Install: https://kind.sigs.k8s.io"; exit 1; }
+	@command -v helm >/dev/null 2>&1 || { echo >&2 "helm is required. Install: https://helm.sh"; exit 1; }
+	bash test/e2e/run-e2e.sh
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
