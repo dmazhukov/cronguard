@@ -1,84 +1,56 @@
 /*
 Copyright 2026 Dmitrii Zhukov.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0.
 */
 
 package controller
 
 import (
-	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 )
 
-var _ = Describe("CronJobMonitor Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+var _ = Describe("CronJobMonitor controller", func() {
+	const namespace = "default"
 
-		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+	It("reports CronJobNotFound when the referenced CronJob does not exist", func() {
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "missing-ref", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef: monitoringv1alpha1.CronJobReference{Name: "does-not-exist"},
+				Schedule:   "0 * * * *",
+			},
 		}
-		cronjobmonitor := &monitoringv1alpha1.CronJobMonitor{}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
 
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind CronJobMonitor")
-			err := k8sClient.Get(ctx, typeNamespacedName, cronjobmonitor)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &monitoringv1alpha1.CronJobMonitor{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: "missing-ref", Namespace: namespace,
+			}, got)).To(Succeed())
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &monitoringv1alpha1.CronJobMonitor{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance CronJobMonitor")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &CronJobMonitorReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
-		})
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonCronJobNotFound))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 })
+
+// findCondition is a test helper.
+func findCondition(conds []metav1.Condition, t string) *metav1.Condition {
+	for i := range conds {
+		if conds[i].Type == t {
+			return &conds[i]
+		}
+	}
+	return nil
+}
