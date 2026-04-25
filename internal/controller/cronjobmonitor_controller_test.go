@@ -186,6 +186,63 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonDurationExceeded))
 		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
+
+	It("resolves schedule from spec when set", func() {
+		cj := makeCronJob(namespace, "sched-1", "0 3 * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "sched-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "sched-1"},
+				Schedule:               "0 2 * * *",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sched-1-mon", Namespace: namespace}, got)).To(Succeed())
+			g.Expect(got.Status.ResolvedSchedule).NotTo(BeNil())
+			g.Expect(*got.Status.ResolvedSchedule).To(Equal("0 2 * * *"))
+			g.Expect(got.Status.NextExpectedTime).NotTo(BeNil())
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("reports InvalidSchedule when the schedule does not parse", func() {
+		cj := makeCronJob(namespace, "bad-1", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "bad-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "bad-1"},
+				Schedule:               "not a cron",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "bad-1-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidSchedule))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
 })
 
 // findCondition is a test helper.

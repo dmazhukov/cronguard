@@ -148,3 +148,28 @@ func evaluateReady(cjm *monitoringv1alpha1.CronJobMonitor) {
 		ObservedGeneration: cjm.Generation,
 	})
 }
+
+// evaluateScheduleHealthy inspects LastScheduleTime / NextExpectedTime / MissedRuns
+// and sets ScheduleHealthy accordingly.
+// It is called only after a schedule has been successfully parsed.
+func evaluateScheduleHealthy(cjm *monitoringv1alpha1.CronJobMonitor, missed int32) {
+	cjm.Status.MissedRuns = missed
+
+	if cjm.Spec.AlertAfterMissedRuns > 0 && missed >= cjm.Spec.AlertAfterMissedRuns {
+		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+			Status:             metav1.ConditionFalse,
+			Reason:             monitoringv1alpha1.ReasonScheduleMissed,
+			Message:            fmt.Sprintf("%d missed runs (threshold %d)", missed, cjm.Spec.AlertAfterMissedRuns),
+			ObservedGeneration: cjm.Generation,
+		})
+		return
+	}
+	meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+		Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+		Status:             metav1.ConditionTrue,
+		Reason:             monitoringv1alpha1.ReasonOnSchedule,
+		Message:            "runs landing within schedule + grace",
+		ObservedGeneration: cjm.Generation,
+	})
+}
