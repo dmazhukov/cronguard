@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	clocktesting "k8s.io/utils/clock/testing"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,6 +35,7 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 	scheme    *runtime.Scheme
+	testClock *clocktesting.FakePassiveClock
 )
 
 func TestControllers(t *testing.T) {
@@ -70,9 +72,12 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	testClock = clocktesting.NewFakePassiveClock(time.Now())
+
 	reconciler := &CronJobMonitorReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Clock:  testClock,
 	}
 	Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
