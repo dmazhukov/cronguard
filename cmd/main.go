@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
@@ -78,14 +79,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register business metrics collector.
+	// Register business metrics on controller-runtime's registry — that is
+	// the registry served by metricsserver at /metrics. Registering on
+	// prometheus.DefaultRegisterer here would be invisible at the endpoint.
 	lister := &controller.CachedLister{
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("metrics-lister"),
 	}
-	ctrlmetrics := metrics.NewCollector(lister)
-	prometheus.DefaultRegisterer.MustRegister(ctrlmetrics)
-	metrics.MustRegister(prometheus.DefaultRegisterer)
+	collector := metrics.NewCollector(lister)
+	crmetrics.Registry.MustRegister(collector)
+	metrics.MustRegister(crmetrics.Registry)
 
 	// build_info
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -93,7 +96,7 @@ func main() {
 		Help: "Build metadata",
 	}, []string{"version", "commit", "build_date"})
 	buildInfo.WithLabelValues(version, commit, buildDate).Set(1)
-	prometheus.DefaultRegisterer.MustRegister(buildInfo)
+	crmetrics.Registry.MustRegister(buildInfo)
 
 	if err := (&controller.CronJobMonitorReconciler{
 		Client:   mgr.GetClient(),
