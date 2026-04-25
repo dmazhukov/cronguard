@@ -43,6 +43,30 @@ serviceMonitor:
   scrapeTimeout: 10s
   honorLabels: false
 
+# PrometheusRule for opinionated CronGuard alerts.
+# Requires prometheus-operator CRDs in the cluster.
+prometheusRule:
+  enabled: false
+  namespace: ""
+  labels: {}
+  interval: 30s
+  thresholds:
+    scheduleMissed:
+      for: 5m
+      severity: warning
+    consecutiveFailures:
+      for: 5m
+      severity: warning
+    durationExceeded:
+      for: 1m
+      severity: info
+    notReady:
+      for: 10m
+      severity: critical
+    operatorDown:
+      for: 2m
+      severity: critical
+
 # CRD installation. The Helm 3 convention is to keep CRDs in crds/ which are
 # installed on `helm install` but NEVER touched on `helm upgrade`. Set to false
 # to skip — useful when CRDs are managed externally (e.g. by a separate apply).

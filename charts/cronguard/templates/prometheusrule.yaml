@@ -1,0 +1,74 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "cronguard.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.prometheusRule.namespace }}
+  labels:
+    {{- include "cronguard.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: cronguard.slo
+      interval: {{ .Values.prometheusRule.interval }}
+      rules:
+        - alert: CronGuardScheduleMissed
+          expr: cronguard_condition{type="ScheduleHealthy"} == 0
+          for: {{ .Values.prometheusRule.thresholds.scheduleMissed.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.scheduleMissed.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}/{{ $labels.name }}" }} has missed runs"
+            description: "ScheduleHealthy is False for CronJob {{ "{{ $labels.cronjob }}" }}: {{ "{{ $labels.reason }}" }}."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/schedule-missed.md"
+
+        - alert: CronGuardConsecutiveFailures
+          expr: cronguard_condition{type="ExecutionHealthy"} == 0
+          for: {{ .Values.prometheusRule.thresholds.consecutiveFailures.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.consecutiveFailures.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}/{{ $labels.name }}" }} has consecutive failures"
+            description: "ExecutionHealthy is False for CronJob {{ "{{ $labels.cronjob }}" }}: {{ "{{ $labels.reason }}" }}."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/consecutive-failures.md"
+
+        - alert: CronGuardDurationExceeded
+          expr: cronguard_condition{type="DurationHealthy"} == 0
+          for: {{ .Values.prometheusRule.thresholds.durationExceeded.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.durationExceeded.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}/{{ $labels.name }}" }} duration SLO breached"
+            description: "DurationHealthy is False for CronJob {{ "{{ $labels.cronjob }}" }}: {{ "{{ $labels.reason }}" }}."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/duration-exceeded.md"
+
+        - alert: CronGuardNotReady
+          expr: cronguard_condition{type="Ready"} == 0
+          for: {{ .Values.prometheusRule.thresholds.notReady.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.notReady.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}/{{ $labels.name }}" }} is not Ready"
+            description: "Ready condition is False for CronJob {{ "{{ $labels.cronjob }}" }}: {{ "{{ $labels.reason }}" }}."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/not-ready.md"
+
+    - name: cronguard.platform
+      interval: {{ .Values.prometheusRule.interval }}
+      rules:
+        - alert: CronGuardOperatorDown
+          expr: up{job=~"cronguard.*"} == 0
+          for: {{ .Values.prometheusRule.thresholds.operatorDown.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.operatorDown.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronGuard operator is down"
+            description: "Prometheus has not been able to scrape CronGuard /metrics for at least {{ .Values.prometheusRule.thresholds.operatorDown.for }}."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/operator-down.md"
+{{- end }}
