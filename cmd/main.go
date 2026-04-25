@@ -79,7 +79,10 @@ func main() {
 	}
 
 	// Register business metrics collector.
-	lister := &controller.CachedLister{Client: mgr.GetClient()}
+	lister := &controller.CachedLister{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("metrics-lister"),
+	}
 	ctrlmetrics := metrics.NewCollector(lister)
 	prometheus.DefaultRegisterer.MustRegister(ctrlmetrics)
 	metrics.MustRegister(prometheus.DefaultRegisterer)
