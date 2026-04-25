@@ -13,9 +13,11 @@ TIMEOUT="${TIMEOUT:-180s}"
 log() { printf '\n=== %s ===\n' "$*" >&2; }
 
 cleanup() {
-  local rc=$?
+  # Accept the original exit code as $1 so chained traps can preserve it
+  # past noisy `|| true` cleanup calls (which would otherwise reset $?).
+  local rc="${1:-$?}"
   if [[ "$rc" -ne 0 ]]; then
-    log "FAILURE — collecting diagnostics"
+    log "FAILURE (exit=$rc) — collecting diagnostics"
     kubectl -n "$RELEASE_NS" get pods -o wide || true
     kubectl -n "$RELEASE_NS" describe deploy --all || true
     kubectl -n "$RELEASE_NS" logs deploy/cronguard --tail=200 -c manager || true
@@ -27,7 +29,8 @@ cleanup() {
   fi
   exit "$rc"
 }
-trap cleanup EXIT
+# Capture $? at trap-fire time, then call cleanup with that explicit rc.
+trap 'cleanup $?' EXIT
 
 log "Creating kind cluster $CLUSTER_NAME ($NODE_IMAGE)"
 kind create cluster --name "$CLUSTER_NAME" --image "$NODE_IMAGE" --wait 60s
@@ -76,7 +79,9 @@ kubectl -n "$SAMPLE_NS" get cronjobmonitor nightly-settlement -o yaml
 log "Scraping /metrics"
 kubectl -n "$RELEASE_NS" port-forward svc/cronguard-metrics 18080:8080 >/tmp/pf.log 2>&1 &
 PF_PID=$!
-trap 'kill $PF_PID 2>/dev/null || true; cleanup' EXIT
+# Re-arm trap to also kill the port-forward before cleanup. Capture $? first
+# so the `kill || true` doesn't overwrite it.
+trap 'rc=$?; kill $PF_PID 2>/dev/null || true; cleanup $rc' EXIT
 sleep 3
 
 if curl -sSf "http://localhost:18080/metrics" >/tmp/metrics.txt; then
