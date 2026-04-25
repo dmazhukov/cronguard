@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cronguard-rules
+  labels:
+    app.kubernetes.io/name: cronguard
+    app.kubernetes.io/part-of: cronguard
+    role: alert-rules
+spec:
+  groups:
+    - name: cronguard.slo
+      interval: 30s
+      rules:
+        - alert: CronGuardScheduleMissed
+          expr: cronguard_condition{type="ScheduleHealthy"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} has missed runs"
+            description: "ScheduleHealthy is False for CronJob {{ $labels.cronjob }}: {{ $labels.reason }}. The schedule SLO has been breached for at least 5 minutes."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/schedule-missed.md"
+
+        - alert: CronGuardConsecutiveFailures
+          expr: cronguard_condition{type="ExecutionHealthy"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} has consecutive failures"
+            description: "ExecutionHealthy is False for CronJob {{ $labels.cronjob }}: {{ $labels.reason }}. Job has been failing repeatedly."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/consecutive-failures.md"
+
+        - alert: CronGuardDurationExceeded
+          expr: cronguard_condition{type="DurationHealthy"} == 0
+          for: 1m
+          labels:
+            severity: info
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} duration SLO breached"
+            description: "DurationHealthy is False for CronJob {{ $labels.cronjob }}: {{ $labels.reason }}. Last run exceeded its duration budget."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/duration-exceeded.md"
+
+        - alert: CronGuardNotReady
+          expr: cronguard_condition{type="Ready"} == 0
+          for: 10m
+          labels:
+            severity: critical
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} is not Ready"
+            description: "Ready condition is False for CronJob {{ $labels.cronjob }}: {{ $labels.reason }}. One or more SLO checks are failing for at least 10 minutes."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/not-ready.md"
+
+    - name: cronguard.platform
+      interval: 30s
+      rules:
+        - alert: CronGuardOperatorDown
+          expr: up{job=~"cronguard.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: cronguard
+          annotations:
+            summary: "CronGuard operator is down"
+            description: "Prometheus has not been able to scrape CronGuard /metrics for at least 2 minutes. The operator may be crashlooping or unreachable."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/operator-down.md"
