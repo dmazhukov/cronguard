@@ -79,6 +79,7 @@ type CronJobMonitorSpec struct {
 // +kubebuilder:validation:Enum=Succeeded;Failed;Running
 type ExecutionPhase string
 
+// ExecutionPhase values reported in ExecutionRecord.Phase.
 const (
 	ExecutionPhaseSucceeded ExecutionPhase = "Succeeded"
 	ExecutionPhaseFailed    ExecutionPhase = "Failed"

@@ -1,61 +1,50 @@
 version: "2"
+
 run:
-  allow-parallel-runners: true
+  timeout: 5m
+  tests: true
+
 linters:
   default: none
   enable:
-    - copyloopvar
-    - dupl
+    - bodyclose
     - errcheck
-    - ginkgolinter
-    - goconst
-    - gocyclo
+    - gocritic
+    - gosec
     - govet
     - ineffassign
-    - lll
-    - modernize
     - misspell
-    - nakedret
-    - prealloc
     - revive
     - staticcheck
     - unconvert
-    - unparam
     - unused
-    - logcheck
   settings:
-    custom:
-      logcheck:
-        type: "module"
-        description: Checks Go logging calls for Kubernetes logging conventions.
+    gosec:
+      excludes:
+        - G601   # implicit memory aliasing in for loop (benign pattern in k8s code)
     revive:
       rules:
-        - name: comment-spacings
-        - name: import-shadowing
-    modernize:
-      disable:
-        - omitzero
+        - name: exported
+          severity: warning
   exclusions:
-    generated: lax
-    rules:
-      - linters:
-          - lll
-        path: api/*
-      - linters:
-          - dupl
-          - lll
-        path: internal/*
     paths:
-      - third_party$
-      - builtin$
-      - examples$
+      - vendor
+      - testbin
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - revive
+      - path: test/
+        linters:
+          - gosec
+          - revive
+
 formatters:
   enable:
     - gofmt
     - goimports
   exclusions:
-    generated: lax
     paths:
-      - third_party$
-      - builtin$
-      - examples$
+      - vendor
+      - testbin
