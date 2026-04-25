@@ -11,11 +11,13 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,7 +31,8 @@ import (
 // CronJobMonitorReconciler reconciles a CronJobMonitor object.
 type CronJobMonitorReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors,verbs=get;list;watch;create;update;patch;delete
@@ -61,6 +64,10 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if !cronJobFound {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
 			fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
+		if r.Recorder != nil {
+			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobNotFound,
+				fmt.Sprintf("CronJob %q not found", cjKey.Name))
+		}
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -77,6 +84,10 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobSuspended,
 			"referenced CronJob has suspend=true")
+		if r.Recorder != nil {
+			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobSuspended,
+				"CronJob is suspended")
+		}
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -99,6 +110,10 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidSchedule,
 			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
+		if r.Recorder != nil {
+			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidSchedule,
+				fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
+		}
 		evaluateExecutionHealthy(cjm)
 		evaluateDurationHealthy(cjm)
 		evaluateReady(cjm)
