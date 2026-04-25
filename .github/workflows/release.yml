@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/dmazhukov/cronguard:${{ github.ref_name }}
+            ghcr.io/dmazhukov/cronguard:latest
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Build install manifest
+        run: |
+          cd config/manager && kustomize edit set image controller=ghcr.io/dmazhukov/cronguard:${{ github.ref_name }} && cd -
+          kustomize build config/default > install.yaml
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            install.yaml
+            config/crd/bases/monitoring.cronguard.io_cronjobmonitors.yaml
+          generate_release_notes: true
