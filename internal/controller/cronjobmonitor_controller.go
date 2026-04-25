@@ -93,7 +93,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		res, err := r.patchStatus(ctx, cjm)
 		if err != nil {
 			result = metrics.ResultError
-		} else if res.Requeue {
+		} else if res.RequeueAfter > 0 {
 			result = metrics.ResultRequeue
 		}
 		return res, err
@@ -119,7 +119,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		res, err := r.patchStatus(ctx, cjm)
 		if err != nil {
 			result = metrics.ResultError
-		} else if res.Requeue {
+		} else if res.RequeueAfter > 0 {
 			result = metrics.ResultRequeue
 		}
 		return res, err
@@ -144,7 +144,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		res, err := r.patchStatus(ctx, cjm)
 		if err != nil {
 			result = metrics.ResultError
-		} else if res.Requeue {
+		} else if res.RequeueAfter > 0 {
 			result = metrics.ResultRequeue
 		}
 		return res, err
@@ -240,7 +240,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		result = metrics.ResultError
 		return ctrl.Result{}, err
 	}
-	if res.Requeue {
+	if res.RequeueAfter > 0 {
 		result = metrics.ResultRequeue
 		return res, nil
 	}
@@ -261,7 +261,7 @@ func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.Cr
 func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitoringv1alpha1.CronJobMonitor) (ctrl.Result, error) {
 	if err := r.Status().Update(ctx, cjm); err != nil {
 		if apierrors.IsConflict(err) {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("status update: %w", err)
 	}
