@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-25
+
 ### Added
 - Initial operator scaffold.
 - `CronJobMonitor` CRD (`monitoring.cronguard.io/v1alpha1`).
@@ -14,7 +16,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prometheus custom collector with `cronguard_*` metrics.
 - Distroless multi-arch container image.
 - `envtest`-backed controller tests.
-
-## [0.1.0] - TBD
-
-First tagged release. See Unreleased above.
