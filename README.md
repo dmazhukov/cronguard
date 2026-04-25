@@ -74,6 +74,49 @@ spec:
   historyLimit: 10
 ```
 
+## Walkthrough
+
+<details>
+<summary>Click to expand: install + sample + status check + metrics scrape</summary>
+
+```text
+$ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.2.0 \
+    --namespace cronguard-system --create-namespace
+NAME: cronguard
+STATUS: deployed
+REVISION: 1
+
+$ kubectl -n cronguard-system get pods
+NAME                         READY   STATUS    RESTARTS   AGE
+cronguard-7d4b8c9f6b-x9z4q   1/1     Running   0          11s
+
+$ kubectl apply -f config/samples/cronjob_example.yaml \
+                -f config/samples/monitoring_v1alpha1_cronjobmonitor.yaml
+
+$ kubectl get cronjobmonitors
+NAME                 SCHEDULE    LASTSUCCESS   CONSECFAILS   MISSED   READY     AGE
+nightly-settlement   0 2 * * *                 0             0        Unknown   8s
+
+$ kubectl describe cronjobmonitor nightly-settlement
+Status:
+  Conditions:
+    Type: Reconciled        Status: True   Reason: ReconcileSuccess
+    Type: ScheduleHealthy   Status: True   Reason: OnSchedule
+    ...
+  Next Expected Time: 2026-04-26T02:00:00Z
+
+$ curl -s localhost:8080/metrics | grep ^cronguard_ | head -5
+cronguard_consecutive_failures{...} 0
+cronguard_condition{...,type="Reconciled"} 1
+cronguard_last_success_timestamp_seconds{...} 0
+cronguard_missed_runs{...} 0
+cronguard_next_expected_timestamp_seconds{...} 1.7619264e+09
+```
+
+Replay locally with `asciinema play docs/cast/install.cast`.
+
+</details>
+
 ## Metrics
 
 All metrics are labelled `{namespace, name, cronjob}`.
