@@ -348,6 +348,45 @@ var _ = Describe("CronJobMonitor controller", func() {
 		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 
+	It("freezes ScheduleHealthy=Unknown for a suspended CronJob and does not increment MissedRuns", func() {
+		cj := makeCronJob(namespace, "suspended-1", "* * * * *")
+		suspend := true
+		cj.Spec.Suspend = &suspend
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "suspended-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "suspended-1"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "suspended-1-mon", Namespace: namespace}, got)).To(Succeed())
+
+			reconciled := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(reconciled).NotTo(BeNil())
+			g.Expect(reconciled.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(reconciled.Reason).To(Equal(monitoringv1alpha1.ReasonCronJobSuspended))
+
+			schedHealthy := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+			g.Expect(schedHealthy).NotTo(BeNil())
+			g.Expect(schedHealthy.Status).To(Equal(metav1.ConditionUnknown))
+			g.Expect(schedHealthy.Reason).To(Equal(monitoringv1alpha1.ReasonSuspended))
+
+			// MissedRuns must not increment under suspend, even after a clock advance.
+			g.Expect(got.Status.MissedRuns).To(Equal(int32(0)))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
 	It("emits a ConsecutiveFailures Warning event when ExecutionHealthy flips to False", func() {
 		cj := makeCronJob(namespace, "fails-evt", "0 * * * *")
 		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
