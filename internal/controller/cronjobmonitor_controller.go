@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
+	"github.com/dmazhukov/cronguard/internal/history"
 )
 
 // CronJobMonitorReconciler reconciles a CronJobMonitor object.
@@ -59,7 +60,42 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	_ = logger
-	// Placeholder: later tasks compute SLO state. For now, mark reconciled=true.
+
+	owned, err := listOwnedJobs(ctx, r.Client, cj)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	sortJobsNewestFirst(owned)
+
+	incoming := make([]monitoringv1alpha1.ExecutionRecord, 0, len(owned))
+	for i := range owned {
+		incoming = append(incoming, jobToRecord(&owned[i]))
+	}
+
+	limit := int(cjm.Spec.HistoryLimit)
+	if limit <= 0 {
+		limit = 10
+	}
+	cjm.Status.RecentExecutions = history.Merge(cjm.Status.RecentExecutions, incoming, limit)
+
+	// Populate last-success / last-failure / last-schedule timestamps.
+	cjm.Status.LastSuccessTime = nil
+	cjm.Status.LastFailureTime = nil
+	cjm.Status.LastScheduleTime = nil
+	for i := range cjm.Status.RecentExecutions {
+		rec := &cjm.Status.RecentExecutions[i]
+		if cjm.Status.LastScheduleTime == nil {
+			t := rec.StartTime
+			cjm.Status.LastScheduleTime = &t
+		}
+		if rec.Phase == monitoringv1alpha1.ExecutionPhaseSucceeded && cjm.Status.LastSuccessTime == nil {
+			cjm.Status.LastSuccessTime = rec.EndTime
+		}
+		if rec.Phase == monitoringv1alpha1.ExecutionPhaseFailed && cjm.Status.LastFailureTime == nil {
+			cjm.Status.LastFailureTime = rec.EndTime
+		}
+	}
+
 	meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 		Type:               monitoringv1alpha1.ConditionReconciled,
 		Status:             metav1.ConditionTrue,
