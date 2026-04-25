@@ -10,4 +10,4 @@ Runbooks linked from the default `PrometheusRule` annotations. Each runbook cove
 - [not-ready](not-ready.md) — `CronGuardNotReady`
 - [operator-down](operator-down.md) — `CronGuardOperatorDown`
 
-These are placeholders in v0.2.0 — concrete remediation steps land in a follow-up patch.
+These are production-ready runbooks linked from each alert's `runbook_url`, covering symptom, triage, common causes, and concrete remediation commands.
