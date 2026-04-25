@@ -244,6 +244,66 @@ var _ = Describe("CronJobMonitor controller", func() {
 		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 
+	It("flips ScheduleHealthy=False after AlertAfterMissedRuns missed slots", func() {
+		// Schedule: every minute. Grace 0. Threshold 2.
+		cj := makeCronJob(namespace, "missed-1", "* * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		// Reset the fake clock to a known epoch comfortably after wall-clock
+		// time so MissedRunsSince(creationTimestamp, now, 0) accumulates.
+		baseTime := time.Now().Add(1 * time.Hour).Truncate(time.Minute)
+		testClock.SetTime(baseTime)
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "missed-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "missed-1"},
+				MaxConsecutiveFailures: 5,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     0,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		// First, wait for steady state (Reconciled=True with the just-created CJM).
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "missed-1-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+
+		// Advance fake clock by 5 minutes; expect at least 2 missed slots.
+		testClock.SetTime(baseTime.Add(5 * time.Minute))
+
+		// Touch the CJM to force a reconcile (annotation bump).
+		Eventually(func() error {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "missed-1-mon", Namespace: namespace}, got); err != nil {
+				return err
+			}
+			if got.Annotations == nil {
+				got.Annotations = map[string]string{}
+			}
+			got.Annotations["cronguard.io/test-tick"] = "1"
+			return k8sClient.Update(ctx, got)
+		}, 5*time.Second, 250*time.Millisecond).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "missed-1-mon", Namespace: namespace}, got)).To(Succeed())
+			g.Expect(got.Status.MissedRuns).To(BeNumerically(">=", 2))
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonScheduleMissed))
+		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
 	It("populates LastFailureTime even when Job CompletionTime is nil", func() {
 		cj := makeCronJob(namespace, "fail-no-end", "0 * * * *")
 		Expect(k8sClient.Create(ctx, cj)).To(Succeed())

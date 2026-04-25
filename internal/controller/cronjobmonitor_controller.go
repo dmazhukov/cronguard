@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/clock"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,6 +35,16 @@ type CronJobMonitorReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	Clock    clock.PassiveClock
+}
+
+// now returns the current time, using the injected Clock if set,
+// else the real wall clock. Allows deterministic tests.
+func (r *CronJobMonitorReconciler) now() time.Time {
+	if r.Clock != nil {
+		return r.Clock.Now()
+	}
+	return time.Now()
 }
 
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors,verbs=get;list;watch;create;update;patch;delete
@@ -186,7 +197,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	now := time.Now()
+	now := r.now()
 	nextExpected := parsed.Next(now)
 	nextT := metav1.NewTime(nextExpected)
 	cjm.Status.NextExpectedTime = &nextT
