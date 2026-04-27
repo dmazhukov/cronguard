@@ -4,13 +4,28 @@ metadata:
   name: nightly-settlement
   namespace: default
 spec:
-  schedule: "0 2 * * *"
+  schedule: "*/2 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: settlement
-              image: busybox
-              command: ["/bin/sh", "-c", "echo settling; sleep 2; exit 0"]
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "echo settling; sleep 5; exit 0"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { cpu: 100m, memory: 64Mi }

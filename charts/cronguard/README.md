@@ -2,14 +2,14 @@
 
 SLO-style observability operator for Kubernetes CronJobs.
 
-The operator watches CronJobs and Jobs in the cluster (or a single namespace) and reconciles a `CronJobMonitor` custom resource that captures the SLO state — consecutive failures, missed runs, schedule drift, and recent execution history. Each monitor exports Prometheus metrics under `cronguard_*` so you can alert on schedule and execution health from a single source.
+The operator watches CronJobs and Jobs in the cluster (or a single namespace) and reconciles a `CronJobMonitor` custom resource that captures the SLO state — consecutive failures, missed runs, schedule drift, and recent execution history. Each monitor exports Prometheus metrics under `cronguard_*` so you can alert on schedule and execution health.
 
 ## Installing
 
 ### Via OCI registry (Helm 3.8+)
 
 ```bash
-helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.2.0 \
+helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.2.2 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -18,7 +18,7 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.2.0 
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.2.0 \
+helm install cronguard cronguard/cronguard --version 0.2.2 \
   --namespace cronguard-system --create-namespace
 ```
 

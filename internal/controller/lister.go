@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,13 +22,13 @@ type CachedLister struct {
 	Log    logr.Logger
 }
 
-// List returns all CronJobMonitor objects currently in the cache.
-// On list error returns an empty slice — metrics scrape must never fail —
-// but logs the error at V(1) so operators can see if the cache breaks.
+// List returns the cached CronJobMonitor objects, or nil on cache failure.
 func (l *CachedLister) List() []monitoringv1alpha1.CronJobMonitor {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	var list monitoringv1alpha1.CronJobMonitorList
-	if err := l.Client.List(context.Background(), &list); err != nil {
-		l.Log.V(1).Info("CachedLister: failed to list CronJobMonitors for metrics", "error", err.Error())
+	if err := l.Client.List(ctx, &list); err != nil {
+		l.Log.V(1).Info("CachedLister: list failed", "error", err.Error())
 		return nil
 	}
 	return list.Items

@@ -6,9 +6,11 @@ Alert fires when `cronguard_condition{type="ExecutionHealthy"} == 0` for at leas
 
 User-visible impact: the workload's output is stale and getting staler with every slot. Alerts that depend on this Job's freshness will start to fire downstream.
 
+> Resource names below assume the default Helm install (`helm install cronguard ...`) into namespace `cronguard-system`. For the `kubectl apply -f install.yaml` install path, the Deployment is `cronguard-controller-manager` and the Service is `cronguard-controller-manager-metrics-service` — substitute accordingly.
+
 ## Why this matters
 
-A single failure is noise; repeated failures across consecutive slots indicate a real defect — bad code, bad config, bad credentials, or a sick dependency. The streak counter exists so the alert is robust to flaky one-offs but pages humans on a real outage. By the time you see this, retries have not helped.
+A single failure is noise. Repeated failures across consecutive slots indicate a real defect: bad code, bad config, or a sick dependency. The streak counter exists so the alert tolerates one-off flakes but pages on a real outage.
 
 ## Quick triage (~2 min)
 
@@ -61,8 +63,8 @@ A single failure is noise; repeated failures across consecutive slots indicate a
 If the failure window aligns with an image bump, restore the previous image. Find the last successful Job's image:
 
 ```bash
-kubectl get jobs -n <ns> -l "batch.kubernetes.io/cronjob-name=<ref-name>" \
-  --field-selector=status.successful=1 -o jsonpath='{range .items[*]}{.metadata.name}{"  "}{.spec.template.spec.containers[*].image}{"\n"}{end}' \
+kubectl get jobs -n <ns> -l "batch.kubernetes.io/cronjob-name=<ref-name>" -o json \
+  | jq -r '.items[] | select(.status.succeeded == 1) | "\(.metadata.name)  \(.spec.template.spec.containers[0].image)"' \
   | sort | tail -5
 ```
 

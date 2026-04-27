@@ -4,7 +4,9 @@
 
 Alert fires when `cronguard_condition{type="ScheduleHealthy"} == 0` for at least 5 minutes. CronGuard has observed that one or more expected runs of a CronJob did not start within the configured grace period.
 
-User-visible impact: scheduled work is not happening — reports are not being delivered, batches are not running, retention sweeps are stalled.
+User-visible impact: the Job's downstream output is now stale and getting staler each missed slot.
+
+> Resource names below assume the default Helm install (`helm install cronguard ...`) into namespace `cronguard-system`. For the `kubectl apply -f install.yaml` install path, the Deployment is `cronguard-controller-manager` and the Service is `cronguard-controller-manager-metrics-service` — substitute accordingly.
 
 ## Why this matters
 
@@ -30,7 +32,7 @@ User-visible impact: scheduled work is not happening — reports are not being d
      -l "batch.kubernetes.io/cronjob-name=<ref-name>" \
      -o custom-columns=NAME:.metadata.name,COMPLETIONS:.status.succeeded,ACTIVE:.status.active,AGE:.metadata.creationTimestamp
    ```
-4. Read the CronJob's events for `JobAlreadyActive`, `MissingJob`, or `FailedNeedsStart`:
+4. Read the CronJob's events — `MissingJob`, `FailedCreate`, or `UnexpectedJob` are the most common signals from kube-controller-manager:
    ```bash
    kubectl describe cronjob <ref-name> -n <ns> | sed -n '/Events:/,$p'
    ```
@@ -62,8 +64,8 @@ User-visible impact: scheduled work is not happening — reports are not being d
 Do not lift `Forbid` reactively — it exists to protect the workload from overlap. Find why the previous Job is hanging:
 
 ```bash
-kubectl get jobs -n <ns> -l "batch.kubernetes.io/cronjob-name=<ref-name>" \
-  --field-selector=status.successful=0 -o yaml | yq '.items[] | {name: .metadata.name, active: .status.active, startTime: .status.startTime}'
+kubectl get jobs -n <ns> -l "batch.kubernetes.io/cronjob-name=<ref-name>" -o json \
+  | jq '.items[] | select((.status.succeeded // 0) == 0) | {name: .metadata.name, active: .status.active, startTime: .status.startTime}'
 kubectl logs -n <ns> -l job-name=<stuck-job-name> --tail=200
 ```
 
@@ -89,7 +91,7 @@ Check apiserver and controller-manager health on the cluster. If kube-controller
 
 ```bash
 kubectl patch cronjobmonitor <name> -n <ns> --type=merge \
-  -p '{"spec":{"slo":{"gracePeriodSeconds":120}}}'
+  -p '{"spec":{"gracePeriodSeconds":120}}'
 ```
 
 ### Node resource exhaustion

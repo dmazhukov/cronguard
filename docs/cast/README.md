@@ -8,19 +8,18 @@
 asciinema play install.cast
 ```
 
-Or convert to SVG/GIF for documentation:
+Or render to GIF for inline embed:
 
 ```bash
-# SVG (recommended for README embeds)
-agg install.cast install.svg
-
-# Or use the asciinema web player anywhere it's hosted.
+# Requires `agg` (asciinema GIF generator).
+agg install.cast install.gif
 ```
+
+For SVG, use the separate `svg-term-cli` tool — `agg` only emits GIF.
 
 ## Re-record
 
-The current cast is hand-crafted from idealised output. To replace with a real
-recording:
+The cast in this directory was recorded against a real `kind` cluster. To re-record (e.g. after a UX change):
 
 ```bash
 # Spin up a kind cluster and install CronGuard.

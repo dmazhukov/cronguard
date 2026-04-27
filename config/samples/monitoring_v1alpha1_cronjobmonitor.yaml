@@ -6,8 +6,8 @@ metadata:
 spec:
   cronJobRef:
     name: nightly-settlement
-  schedule: "0 2 * * *"
-  maxDurationSeconds: 1800
+  schedule: "*/2 * * * *"
+  maxDurationSeconds: 30
   maxConsecutiveFailures: 2
   alertAfterMissedRuns: 2
   gracePeriodSeconds: 60

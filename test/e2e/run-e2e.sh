@@ -29,7 +29,6 @@ cleanup() {
   fi
   exit "$rc"
 }
-# Capture $? at trap-fire time, then call cleanup with that explicit rc.
 trap 'cleanup $?' EXIT
 
 log "Creating kind cluster $CLUSTER_NAME ($NODE_IMAGE)"
@@ -56,22 +55,12 @@ log "Applying samples"
 kubectl apply -f config/samples/cronjob_example.yaml -n "$SAMPLE_NS"
 kubectl apply -f config/samples/monitoring_v1alpha1_cronjobmonitor.yaml -n "$SAMPLE_NS"
 
-log "Waiting for CronJobMonitor Reconciled=True (initial reconcile may set Ready=Unknown until first run)"
-# Reconciled=True is the first stable signal; Ready may stay Unknown until a Job runs.
-for i in {1..30}; do
-  if kubectl -n "$SAMPLE_NS" get cronjobmonitor nightly-settlement \
-       -o jsonpath='{.status.conditions[?(@.type=="Reconciled")].status}' 2>/dev/null \
-     | grep -q '^True$'; then
-    log "Reconciled=True observed after ${i}x polls"
-    break
-  fi
-  sleep 4
-  if [[ "$i" -eq 30 ]]; then
-    log "Timed out waiting for Reconciled=True"
-    kubectl -n "$SAMPLE_NS" describe cronjobmonitor nightly-settlement
-    exit 1
-  fi
-done
+log "Waiting for CronJobMonitor Reconciled=True"
+if ! kubectl -n "$SAMPLE_NS" wait --for=condition=Reconciled --timeout=120s cronjobmonitor/nightly-settlement; then
+  log "Timed out waiting for Reconciled=True"
+  kubectl -n "$SAMPLE_NS" describe cronjobmonitor nightly-settlement
+  exit 1
+fi
 
 log "Status of CronJobMonitor"
 kubectl -n "$SAMPLE_NS" get cronjobmonitor nightly-settlement -o yaml
@@ -79,10 +68,11 @@ kubectl -n "$SAMPLE_NS" get cronjobmonitor nightly-settlement -o yaml
 log "Scraping /metrics"
 kubectl -n "$RELEASE_NS" port-forward svc/cronguard-metrics 18080:8080 >/tmp/pf.log 2>&1 &
 PF_PID=$!
-# Re-arm trap to also kill the port-forward before cleanup. Capture $? first
-# so the `kill || true` doesn't overwrite it.
 trap 'rc=$?; kill $PF_PID 2>/dev/null || true; cleanup $rc' EXIT
-sleep 3
+for _ in {1..15}; do
+  if curl -sSf "http://localhost:18080/metrics" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
 
 if curl -sSf "http://localhost:18080/metrics" >/tmp/metrics.txt; then
   log "Got /metrics ($(wc -l </tmp/metrics.txt) lines)"

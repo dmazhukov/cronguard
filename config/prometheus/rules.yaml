@@ -59,7 +59,7 @@ spec:
       interval: 30s
       rules:
         - alert: CronGuardOperatorDown
-          expr: up{job=~"cronguard.*"} == 0
+          expr: up{job=~".*controller-manager-metrics.*"} == 0
           for: 2m
           labels:
             severity: critical

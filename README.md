@@ -7,11 +7,11 @@
 
 **SLO-style observability for Kubernetes CronJobs.**
 
-CronGuard is a small Kubernetes operator that wraps any existing `batch/v1.CronJob` with a `CronJobMonitor` custom resource. It watches child Jobs, tracks execution history, and exposes high-quality Prometheus metrics — so you can alert on missed runs, duration budget violations, and consecutive failures without hand-rolling PromQL against `kube-state-metrics`.
+CronGuard is a small Kubernetes operator that wraps any existing `batch/v1.CronJob` with a `CronJobMonitor` custom resource. It watches child Jobs, tracks execution history, and exposes Prometheus metrics so you can alert on missed runs, duration overruns, and consecutive failures without hand-rolling PromQL against `kube-state-metrics`.
 
 ## Why
 
-Kubernetes CronJobs fail silently more often than you think: a skipped run under `concurrencyPolicy: Forbid`, a Job that completes with no succeeded pods, control-plane drift pushing starts minutes late. Teams keep re-inventing the same fragile PromQL:
+Kubernetes CronJobs fail silently in several common ways: a skipped run under `concurrencyPolicy: Forbid`, a Job that completes with no succeeded pods, control-plane drift pushing starts minutes late. Teams keep re-inventing the same fragile PromQL:
 
 ```promql
 time() - kube_cronjob_status_last_successful_time{cronjob="..."} > 86400
@@ -25,7 +25,7 @@ CronGuard replaces that with a declarative SLO per CronJob.
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.2.0 \
+  --version 0.2.2 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -34,14 +34,14 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.2.0 \
+helm install cronguard cronguard/cronguard --version 0.2.2 \
   --namespace cronguard-system --create-namespace
 ```
 
 ### Raw manifests
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.2.0/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.2.2/install.yaml
 ```
 
 Apply a sample monitor:
@@ -94,6 +94,8 @@ All metrics are labelled `{namespace, name, cronjob}`.
 |---|---|---|
 | `cronguard_last_success_timestamp_seconds` | gauge | Unix time of last successful Job |
 | `cronguard_last_failure_timestamp_seconds` | gauge | Unix time of last failed Job |
+| `cronguard_last_schedule_timestamp_seconds` | gauge | Unix time of last Job start (success or failure) |
+| `cronguard_running_jobs` | gauge | Currently-running Jobs owned by the watched CronJob |
 | `cronguard_next_expected_timestamp_seconds` | gauge | Unix time of next expected run |
 | `cronguard_consecutive_failures` | gauge | Consecutive failed runs |
 | `cronguard_missed_runs` | gauge | Consecutive missed runs |
@@ -128,15 +130,12 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) �
     /metrics scrape ──► Collector reads cache ──► emits cronguard_*
 ```
 
-No webhooks, no finalizers, no ownership of foreign resources.
 
 ## Roadmap
 
-**v0.1.0 (Phase 1, this release):** operator core, CRD, envtest suite, raw manifests, Prometheus metrics.
+Shipped (v0.2.x): operator core, CRD, envtest suite, raw manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
 
-**Phase 2 (planned):** Helm chart, Grafana dashboard, `PrometheusRule` bundle, `ServiceMonitor`, `kind`-based e2e, Artifact Hub publication.
-
-**Phase 3 (possible):** admission webhook (CEL validation), OLM bundle, namespace-scoped variant, burn-rate alerts.
+Considered for v0.3+: admission webhook (CEL validation), OLM bundle, burn-rate alerts.
 
 ## Development
 

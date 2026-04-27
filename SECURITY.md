@@ -12,8 +12,7 @@ Please include:
 - Steps to reproduce, or a proof-of-concept.
 - The CronGuard version (`kubectl get deployment -n cronguard-system -o jsonpath='{..image}'`).
 
-I will acknowledge your report within 72 hours and aim to publish a fix
-within two weeks for confirmed issues.
+I aim to acknowledge reports within one week and publish a fix within four weeks for confirmed issues. This is best-effort — I'm a solo maintainer.
 
 ## Supported versions
 
