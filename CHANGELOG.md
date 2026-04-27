@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-27
+
+### Fixed (correctness)
+
+- `ScheduleHealthy` now flips to `Unknown` when `spec.schedule` is unparseable. Before, the axis stayed at the last successful value (typically `True/OnSchedule`), masking the configuration error.
+- Reconcile honors the injected `Clock` everywhere. Two leftover `time.Now()` / `time.Until()` calls bypassed the seam; missed-runs envtest was non-deterministic by accident.
+- `CachedLister.List` now uses a 5-second timeout context. Was `context.Background()` — uncancellable on manager shutdown.
+- ResourceVersion-conflict envtest now asserts `apierrors.IsConflict(err)` instead of an incidentally-passing `Reconciled=True` check.
+- `CronGuardOperatorDown` PrometheusRule alert no longer hardcodes `job=~"cronguard.*"`. The matcher now keys on `namespace` + `service` so it works for any release name.
+- `make docker-buildx` recipe rewritten to use `buildx build` directly. The previous version's `sed`-on-Dockerfile produced a duplicate `FROM --platform` line.
+- `release.yml` uses `helm package --version --app-version` flags instead of an in-place `sed` on `Chart.yaml`.
+
+### Added
+
+- Helm chart guard: `replicaCount > 1 && !leaderElection.enabled` now fails template render (was silent split-brain hazard).
+- Helm chart `serviceAccount.create / name / annotations` block — standard pattern for IRSA / Workload Identity.
+- Helm chart Deployment got `revisionHistoryLimit: 5` and explicit `RollingUpdate` strategy.
+- `values.schema.json` got `additionalProperties: false` plus 14 missing key definitions; typos in user values now reject at install time.
+- `ci.yml` and `codeql.yml` got concurrency blocks to cancel superseded PR runs.
+- README metrics table: 2 rows that were missing (`cronguard_last_schedule_timestamp_seconds`, `cronguard_running_jobs`).
+- All runbooks: install-path note explaining Helm vs raw-`install.yaml` resource naming differences.
+
+### Changed
+
+- Sample CronJob rewritten with full security context (compatible with restricted Pod Security Standards) and `*/2 * * * *` schedule (was `0 2 * * *` — useless for demos).
+- e2e workflow uses `kubectl wait --for=condition=Reconciled` (was 30-iter polling) and waits for port-forward readiness via `curl` retries (was `sleep 3`).
+- All Quickstart install commands across README, distribution.md, and chart README pin `--version 0.2.3`. Users landing on prior v0.2.0–v0.2.2 docs hit the metrics-not-exposed regression in v0.2.0.
+- README Roadmap rewritten — the previous "Phase 2 (planned)" claim was wrong; v0.2.x had already shipped the entire Phase 2 (Helm chart, Grafana dashboard, PrometheusRule, ServiceMonitor, kind e2e, Artifact Hub).
+- SECURITY.md SLA changed to realistic 1-week / 4-week best-effort (was 72h / 2 weeks for a solo maintainer).
+- 5 runbooks: corrected `kubectl patch` payloads (the CRD has no `spec.slo` sub-object — patches were silently no-op'ing); removed references to two metrics that don't exist (`cronguard_max_duration_seconds`, `cronguard_condition_last_transition_timestamp_seconds`); replaced unsupported `--field-selector=status.successful=N` queries with `jq` filters; corrected CronJob controller event names (`MissingJob` / `FailedCreate` / `UnexpectedJob`).
+- `docs/cast/README.md` now correctly documents `agg` as GIF-only (it was claimed to render SVG).
+- RBAC tightened: dropped unused `create`/`delete` verbs on `cronjobmonitors` and `delete` on `leases`.
+- Removed ~290 lines of kubebuilder-scaffolded commented-out webhook/cert-manager/prometheus/metrics-auth blocks across `config/default/kustomization.yaml` and `config/manager/manager.yaml`.
+
 ## [0.2.2] - 2026-04-25
 
 ### Added
