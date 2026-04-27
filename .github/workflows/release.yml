@@ -16,8 +16,67 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Block the release on the main-branch CI run for this commit. Prevents
+  # tagging a commit whose lint/test/build/vuln/prometheus-rules checks are
+  # red or never ran. Polls up to 30 minutes, fails fast if no run exists.
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for ci.yml on tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          attempts=60
+          interval=30
+          for i in $(seq 1 "$attempts"); do
+            run=$(gh run list \
+              --repo "$REPO" \
+              --workflow=ci.yml \
+              --commit "$SHA" \
+              --limit 1 \
+              --json databaseId,status,conclusion \
+              --jq '.[0] // empty')
+            if [ -z "$run" ]; then
+              # First minute: tolerate "no run yet" — CI may still be queueing.
+              # After that, give up: tagging a commit with no CI is the bug we
+              # want to catch.
+              if [ "$i" -gt 2 ]; then
+                echo "::error::No ci.yml run found for commit $SHA after $((i*interval))s. Refusing to release."
+                exit 1
+              fi
+              echo "[$i/$attempts] no ci.yml run yet for $SHA, sleeping ${interval}s"
+              sleep "$interval"
+              continue
+            fi
+            status=$(echo "$run" | jq -r .status)
+            conclusion=$(echo "$run" | jq -r .conclusion)
+            run_id=$(echo "$run" | jq -r .databaseId)
+            echo "[$i/$attempts] ci.yml#$run_id status=$status conclusion=$conclusion"
+            case "$status" in
+              completed)
+                if [ "$conclusion" = "success" ]; then
+                  echo "ci.yml passed on $SHA — release proceeding"
+                  exit 0
+                fi
+                echo "::error::ci.yml#$run_id finished with conclusion=$conclusion on $SHA. Refusing to release."
+                exit 1
+                ;;
+              *)
+                sleep "$interval"
+                ;;
+            esac
+          done
+          echo "::error::Timed out after $((attempts*interval))s waiting for ci.yml on $SHA"
+          exit 1
+
   release:
     runs-on: ubuntu-latest
+    needs: verify
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +128,7 @@ jobs:
 
   chart:
     runs-on: ubuntu-latest
-    needs: release
+    needs: [verify, release]
     permissions:
       contents: write
       packages: write
