@@ -37,7 +37,6 @@ func listOwnedJobs(ctx context.Context, c client.Client, cj *batchv1.CronJob) ([
 	return owned, nil
 }
 
-// jobPhase returns the current phase of a Job.
 func jobPhase(job *batchv1.Job) monitoringv1alpha1.ExecutionPhase {
 	for _, cond := range job.Status.Conditions {
 		if cond.Status != corev1.ConditionTrue {
@@ -59,7 +58,6 @@ func jobPhase(job *batchv1.Job) monitoringv1alpha1.ExecutionPhase {
 	return monitoringv1alpha1.ExecutionPhaseRunning
 }
 
-// jobToRecord converts a Job into an ExecutionRecord.
 func jobToRecord(job *batchv1.Job) monitoringv1alpha1.ExecutionRecord {
 	rec := monitoringv1alpha1.ExecutionRecord{
 		JobName: job.Name,
@@ -78,7 +76,6 @@ func jobToRecord(job *batchv1.Job) monitoringv1alpha1.ExecutionRecord {
 	return rec
 }
 
-// sortJobsNewestFirst orders Jobs by start time descending.
 func sortJobsNewestFirst(jobs []batchv1.Job) {
 	sort.Slice(jobs, func(i, j int) bool {
 		ti := jobStartTime(&jobs[i])
