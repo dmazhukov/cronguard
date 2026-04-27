@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-04-27
+
 ### Fixed
 
 - `artifacthub.io/category` corrected from `monitoring` to `monitoring-logging`. The previous value was silently rejected by Artifact Hub's category-enum validator since v0.2.0; the chart was indexed but absent from the `monitoring-logging` category filter on artifacthub.io.
