@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-27
+
 ### Added
 
 - `CronJobMonitor.spec.timeZone` (IANA name, e.g. `America/New_York`) — schedule evaluation now honors the timezone explicitly. Resolution order: `spec.timeZone` → referenced `CronJob.spec.timeZone` → UTC. Status surfaces the resolved zone in `status.resolvedTimeZone`. Closes phantom missed-run reports for CronJobs running outside UTC.
@@ -16,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `ReasonInvalidTimeZone` surfaces malformed `spec.timeZone` as `Reconciled=False` + `ScheduleHealthy=Unknown`, instead of reverting to UTC silently. Mirrors the existing `InvalidSchedule` failure path.
+
+### CI
+
+- `release.yml` now waits for `ci.yml` to finish on the tagged commit and aborts unless `conclusion=success`. Previously `release.yml` ran in isolation on tag push — a tag on a red-CI commit would still ship to GHCR/GH Pages/Artifact Hub. Polls every 30s for up to 30 minutes; missing CI run aborts after the first minute.
 
 ## [0.2.3] - 2026-04-27
 
