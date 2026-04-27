@@ -12,6 +12,8 @@ make test        # runs unit + envtest
 
 `make test` is the single command used in CI. If it passes locally, your PR will pass the primary CI job.
 
+For the full setup — pre-commit hooks, branching strategy, release process — see [docs/development.md](docs/development.md).
+
 ## Workflow
 
 1. Open an issue for significant changes before you start coding.

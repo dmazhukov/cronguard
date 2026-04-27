@@ -62,7 +62,7 @@ spec:
       interval: {{ .Values.prometheusRule.interval }}
       rules:
         - alert: CronGuardOperatorDown
-          expr: up{job=~"cronguard.*"} == 0
+          expr: up{namespace="{{ .Release.Namespace }}",service="{{ include "cronguard.fullname" . }}-metrics"} == 0
           for: {{ .Values.prometheusRule.thresholds.operatorDown.for }}
           labels:
             severity: {{ .Values.prometheusRule.thresholds.operatorDown.severity }}

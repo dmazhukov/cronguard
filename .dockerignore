@@ -4,6 +4,8 @@ bin
 cover.out
 docs
 *.md
+!LICENSE
+.claude
 Makefile
 .gitignore
 .dockerignore

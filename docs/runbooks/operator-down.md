@@ -6,6 +6,8 @@ Alert fires when `up{job=~"cronguard.*"} == 0` for at least 2 minutes — Promet
 
 User-visible impact: CronGuard is no longer evaluating SLOs. Even if your CronJobs are running fine, no axis condition can update; existing conditions go stale, and a new failure on any monitored CronJob will not be detected until scraping resumes.
 
+> Resource names below assume the default Helm install (`helm install cronguard ...`) into namespace `cronguard-system`. For the `kubectl apply -f install.yaml` install path, the Deployment is `cronguard-controller-manager` and the Service is `cronguard-controller-manager-metrics-service` — substitute accordingly.
+
 ## Why this matters
 
 This is the platform-level alert. Every other CronGuard alert assumes that the operator is up and Prometheus can reach it. While this alert is firing, treat all `cronguard_*` metrics as untrusted — they reflect the last successful scrape, not the current state. Restoring scraping is the priority.

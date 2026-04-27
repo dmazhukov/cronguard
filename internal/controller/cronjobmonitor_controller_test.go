@@ -14,6 +14,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -135,7 +136,7 @@ var _ = Describe("CronJobMonitor controller", func() {
 		Eventually(func(g Gomega) {
 			got := &monitoringv1alpha1.CronJobMonitor{}
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "fails-1-mon", Namespace: namespace}, got)).To(Succeed())
-			g.Expect(got.Status.ConsecutiveFailures).To(BeNumerically(">=", 2))
+			g.Expect(got.Status.ConsecutiveFailures).To(Equal(int32(2)))
 			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
 			g.Expect(cond).NotTo(BeNil())
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -473,27 +474,16 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(got.Status.Conditions).NotTo(BeEmpty())
 		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 
-		// Force a conflict: read once, mutate twice in parallel.
+		// Force a real ResourceVersion conflict: read once, mutate twice with the same RV.
 		first := &monitoringv1alpha1.CronJobMonitor{}
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "rv-conflict-mon", Namespace: namespace}, first)).To(Succeed())
 		second := first.DeepCopy()
 
 		first.Status.MissedRuns = 99
 		Expect(k8sClient.Status().Update(ctx, first)).To(Succeed())
-		// second's ResourceVersion is now stale; the next status update from the
-		// reconciler may also be stale, exercising the retry path.
-
-		// The reconciler should converge — eventually the status reflects current state
-		// (MissedRuns reset to 0 since no Job is missed under this schedule's grace).
-		Eventually(func(g Gomega) {
-			got := &monitoringv1alpha1.CronJobMonitor{}
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "rv-conflict-mon", Namespace: namespace}, got)).To(Succeed())
-			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
-			g.Expect(cond).NotTo(BeNil())
-			g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
-
-		_ = second // referenced for clarity; not used directly
+		second.Status.MissedRuns = 42
+		err := k8sClient.Status().Update(ctx, second)
+		Expect(apierrors.IsConflict(err)).To(BeTrue(), "expected resource-version conflict on stale update")
 	})
 })
 

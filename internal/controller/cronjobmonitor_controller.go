@@ -38,8 +38,7 @@ type CronJobMonitorReconciler struct {
 	Clock    clock.PassiveClock
 }
 
-// now returns the current time, using the injected Clock if set,
-// else the real wall clock. Allows deterministic tests.
+// now returns the current time via the injected Clock, or wall clock.
 func (r *CronJobMonitorReconciler) now() time.Time {
 	if r.Clock != nil {
 		return r.Clock.Now()
@@ -47,7 +46,7 @@ func (r *CronJobMonitorReconciler) now() time.Time {
 	return time.Now()
 }
 
-// +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=monitoring.cronguard.io,resources=cronjobmonitors/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch
@@ -57,11 +56,11 @@ func (r *CronJobMonitorReconciler) now() time.Time {
 // Reconcile reads the CronJobMonitor, inspects the referenced CronJob and its
 // Jobs, and updates status conditions and execution history accordingly.
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	start := time.Now()
+	start := r.now()
 	result := metrics.ResultSuccess
 	defer func() {
 		metrics.ReconcileTotal.WithLabelValues(req.Namespace, req.Name, result).Inc()
-		metrics.ReconcileDurationSeconds.WithLabelValues(req.Namespace, req.Name).Observe(time.Since(start).Seconds())
+		metrics.ReconcileDurationSeconds.WithLabelValues(req.Namespace, req.Name).Observe(r.now().Sub(start).Seconds())
 	}()
 
 	cjm := &monitoringv1alpha1.CronJobMonitor{}
@@ -73,11 +72,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
 	}
 
-	// Snapshot prior axis-condition statuses so we can detect threshold
-	// crossings after evaluators run and emit one-shot Kubernetes Events.
-	// We deep-copy because meta.SetStatusCondition mutates the underlying
-	// slice elements in place when the condition already exists, which
-	// would alias these pointers to the post-mutation values.
+	// Snapshot prior axis statuses for transition-event detection.
 	priorReconciled := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
 	priorScheduleHealthy := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
 	priorExecutionHealthy := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
@@ -159,6 +154,13 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidSchedule,
 				fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
 		}
+		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+			Status:             metav1.ConditionUnknown,
+			Reason:             monitoringv1alpha1.ReasonInvalidSchedule,
+			Message:            "schedule expression failed to parse",
+			ObservedGeneration: cjm.Generation,
+		})
 		evaluateExecutionHealthy(cjm)
 		evaluateDurationHealthy(cjm)
 		evaluateReady(cjm)
@@ -252,7 +254,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	cjm.Status.ObservedGeneration = cjm.Generation
 
 	// Requeue at next expected run + small buffer, or in 1 minute at minimum.
-	requeue := time.Until(nextExpected) + 5*time.Second
+	requeue := nextExpected.Sub(r.now()) + 5*time.Second
 	if requeue < time.Minute {
 		requeue = time.Minute
 	}
@@ -269,10 +271,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
-// pickEndOrStart returns the record's EndTime if set, else its StartTime.
-// Used for LastSuccess/LastFailure timestamps; in Kubernetes 1.35+ Failed
-// Jobs can have nil CompletionTime, so we fall back to StartTime to ensure
-// the metrics reflect that a terminal observation occurred.
+// pickEndOrStart returns EndTime if set, else StartTime (Failed Jobs may have nil CompletionTime).
 func pickEndOrStart(rec *monitoringv1alpha1.ExecutionRecord) *metav1.Time {
 	if rec.EndTime != nil {
 		return rec.EndTime
@@ -292,10 +291,7 @@ func (r *CronJobMonitorReconciler) setReconciledFalse(cjm *monitoringv1alpha1.Cr
 	cjm.Status.ObservedGeneration = cjm.Generation
 }
 
-// snapshotCondition returns a deep copy of the named condition, or nil if
-// it is not present. The returned pointer is decoupled from the live
-// status slice, so subsequent meta.SetStatusCondition calls do not alias
-// its fields.
+// snapshotCondition returns a deep copy of the named condition, or nil.
 func snapshotCondition(conds []metav1.Condition, t string) *metav1.Condition {
 	if c := meta.FindStatusCondition(conds, t); c != nil {
 		cp := *c

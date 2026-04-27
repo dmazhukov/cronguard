@@ -6,15 +6,11 @@ Alert fires when `cronguard_condition{type="Ready"} == 0` for at least 10 minute
 
 User-visible impact: at least one SLO axis is broken on this monitor. Because `Ready` rolls up four signals, this page is a "something is wrong" indicator; the specific failure is named in the `reason` field of the False sub-condition.
 
+> Resource names below assume the default Helm install (`helm install cronguard ...`) into namespace `cronguard-system`. For the `kubectl apply -f install.yaml` install path, the Deployment is `cronguard-controller-manager` and the Service is `cronguard-controller-manager-metrics-service` — substitute accordingly.
+
 ## Why this matters
 
-This alert is the safety net for the more specific axis alerts. It catches:
-
-- A condition that flipped False but did not stay False long enough to trigger its own narrower alert.
-- A `Reconciled=False` failure (no narrower alert exists for the controller half).
-- Combinations where two axes flap individually but one is always False, so users see continuous unavailability.
-
-Treat it as a meta-alert: triage means routing to the right specific runbook, not fixing the underlying CronJob from this page.
+Ready aggregates four sub-conditions. This page exists to catch combinations the narrower alerts miss — for example a `Reconciled=False` (no narrower alert exists for the controller half), or two axes flapping such that one is always False. Triage means routing to the right specific runbook.
 
 ## Quick triage (~2 min)
 
@@ -113,10 +109,10 @@ Which axis is most often False across the fleet:
 sum by (type) (cronguard_condition == 0)
 ```
 
-CJMs that have been NotReady the longest (descending by transition age):
+CJMs that are currently NotReady:
 
 ```promql
-topk(10, time() - cronguard_condition_last_transition_timestamp_seconds{type="Ready"} and cronguard_condition{type="Ready"} == 0)
+cronguard_condition{type="Ready"} == 0
 ```
 
 Walk every False condition for one CJM:

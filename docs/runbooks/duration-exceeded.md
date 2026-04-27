@@ -8,13 +8,13 @@ User-visible impact: the Job is finishing — output is being produced — but i
 
 ## Why this matters
 
-Duration is a budget, not a hard limit. The alert is `info` severity by design: it fires before things break, while the team still has slack to investigate before a true SLO violation. Ignoring it long enough turns it into a `CronGuardScheduleMissed` (overlap with `Forbid`) or a `CronGuardConsecutiveFailures` (Job killed by `activeDeadlineSeconds`).
+The `info` severity is intentional: this fires before the SLO is hard-broken, while the team still has slack. Ignored long enough, it turns into `CronGuardScheduleMissed` (overlap with `Forbid`) or `CronGuardConsecutiveFailures` (Job killed by `activeDeadlineSeconds`).
 
 ## Quick triage (~2 min)
 
 1. Inspect the recent execution history — how does the latest run compare to its peers?
    ```bash
-   kubectl get cjmon <name> -n <ns> -o jsonpath='{.status.recentExecutions}' | jq '.[] | {start: .startTime, end: .completionTime, duration: .durationSeconds, success: .succeeded}'
+   kubectl get cjmon <name> -n <ns> -o jsonpath='{.status.recentExecutions}' | jq '.[] | {start: .startTime, end: .endTime, duration: .durationSeconds, phase: .phase}'
    ```
 2. Pull the latest Job's pod resource shape and current usage:
    ```bash
@@ -26,7 +26,7 @@ Duration is a budget, not a hard limit. The alert is `info` severity by design: 
    ```bash
    kubectl get cronjob <ref-name> -n <ns> -o yaml \
      | yq '.spec | {schedule, concurrencyPolicy, jobTemplate.spec.activeDeadlineSeconds}'
-   kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.slo.maxDurationSeconds}'
+   kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.maxDurationSeconds}'
    ```
 4. Look for CPU throttling on the most recent pod:
    ```bash
@@ -84,7 +84,7 @@ If the workload genuinely needs more time, lift `maxDurationSeconds` and documen
 
 ```bash
 kubectl patch cronjobmonitor <name> -n <ns> --type=merge \
-  -p '{"spec":{"slo":{"maxDurationSeconds":<new-budget>}}}'
+  -p '{"spec":{"maxDurationSeconds":<new-budget>}}'
 ```
 
 If the new budget is close to the schedule interval, also bump `activeDeadlineSeconds` on the underlying CronJob and verify `concurrencyPolicy` will tolerate the longer runs.
@@ -120,7 +120,7 @@ If `restartCount > 0`, the wall-clock includes a restart. Pin the pod to stable 
 
 - Metrics: `cronguard_last_duration_seconds`, `cronguard_last_schedule_timestamp_seconds`.
 - Status condition: `DurationHealthy=False, reason=DurationExceeded`.
-- Spec field: `spec.slo.maxDurationSeconds`.
+- Spec field: `spec.maxDurationSeconds`.
 - Adjacent runbooks: [schedule-missed.md](schedule-missed.md) (slow runs eventually block the next slot under `Forbid`), [consecutive-failures.md](consecutive-failures.md) (slow runs eventually trip `activeDeadlineSeconds` and become failures).
 
 ## Appendix
@@ -129,13 +129,6 @@ Top-10 worst-offender CronJobs in the cluster:
 
 ```promql
 topk(10, cronguard_last_duration_seconds)
-```
-
-Ratio of last duration to its budget — anything above 1.0 is over-budget:
-
-```promql
-cronguard_last_duration_seconds
-  / on(namespace, name) group_left() cronguard_max_duration_seconds
 ```
 
 One-shot historical median for capacity planning:

@@ -19,11 +19,7 @@ var parser = cron.NewParser(
 
 // Schedule is a parsed cron expression.
 type Schedule struct {
-	expr sched
-}
-
-type sched interface {
-	Next(time.Time) time.Time
+	expr cron.Schedule
 }
 
 // Parse parses a 5-field cron expression or a supported descriptor

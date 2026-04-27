@@ -1,5 +1,3 @@
-# Default values for cronguard.
-
 image:
   repository: ghcr.io/dmazhukov/cronguard
   pullPolicy: IfNotPresent
@@ -10,6 +8,11 @@ imagePullSecrets: []
 
 nameOverride: ""
 fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
 
 # Number of operator replicas. Set to 2 for HA — leader election ensures only
 # one reconciler is active at a time.
@@ -67,9 +70,7 @@ prometheusRule:
       for: 2m
       severity: critical
 
-# CRD installation. The Helm 3 convention is to keep CRDs in crds/ which are
-# installed on `helm install` but NEVER touched on `helm upgrade`. Set to false
-# to skip — useful when CRDs are managed externally (e.g. by a separate apply).
+# CRD installation. Helm 3 installs crds/ on install only — never on upgrade.
 crds:
   install: true
 

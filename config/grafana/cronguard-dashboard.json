@@ -424,7 +424,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "time() - cronguard_last_success_timestamp_seconds{namespace=~\"$namespace\", cronjob=~\"$cronjob\"} > 0",
+          "expr": "time() - (cronguard_last_success_timestamp_seconds{namespace=~\"$namespace\", cronjob=~\"$cronjob\"} > 0)",
           "legendFormat": "{{namespace}}/{{cronjob}}"
         }
       ]

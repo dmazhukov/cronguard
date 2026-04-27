@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.leaderElection.enabled) }}
+{{- fail "replicaCount > 1 requires leaderElection.enabled=true" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +10,12 @@ metadata:
     {{- include "cronguard.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       {{- include "cronguard.selectorLabels" . | nindent 6 }}

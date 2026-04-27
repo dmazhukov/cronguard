@@ -50,7 +50,7 @@ jobs:
 
       - name: Install kustomize
         run: |
-          KUSTOMIZE_VERSION=v5.4.3
+          KUSTOMIZE_VERSION=v5.8.1
           curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar -xz
           sudo mv kustomize /usr/local/bin/
 
@@ -78,7 +78,7 @@ jobs:
 
       - uses: azure/setup-helm@v4
         with:
-          version: v3.16.2
+          version: v3.18.4
 
       - name: Helm registry login
         run: |
@@ -86,19 +86,15 @@ jobs:
             --username ${{ github.actor }} \
             --password-stdin
 
-      - name: Bump chart version to release tag
-        run: |
-          VER="${{ github.ref_name }}"
-          VER_NO_V="${VER#v}"
-          # Set chart version + appVersion to the released tag.
-          sed -i "s|^version: .*|version: ${VER_NO_V}|" charts/cronguard/Chart.yaml
-          sed -i "s|^appVersion: .*|appVersion: \"${VER_NO_V}\"|" charts/cronguard/Chart.yaml
-
       - name: Package chart
         id: package
         run: |
           mkdir -p /tmp/chart
-          helm package charts/cronguard -d /tmp/chart/
+          VER="${{ github.ref_name }}"
+          VER_NO_V="${VER#v}"
+          helm package charts/cronguard \
+            --version "${VER_NO_V}" --app-version "${VER_NO_V}" \
+            -d /tmp/chart/
           PKG=$(ls /tmp/chart/*.tgz | head -1)
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
           echo "filename=$(basename "$PKG")" >> "$GITHUB_OUTPUT"

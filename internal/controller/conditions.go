@@ -21,18 +21,15 @@ func evaluateExecutionHealthy(cjm *monitoringv1alpha1.CronJobMonitor) {
 	var count int32
 	sawAny := false
 	for _, rec := range cjm.Status.RecentExecutions {
-		switch rec.Phase {
-		case monitoringv1alpha1.ExecutionPhaseSucceeded:
-			sawAny = true
-			goto done
-		case monitoringv1alpha1.ExecutionPhaseFailed:
-			sawAny = true
-			count++
-		case monitoringv1alpha1.ExecutionPhaseRunning:
-			// running runs do not affect the counter
+		if rec.Phase == monitoringv1alpha1.ExecutionPhaseRunning {
+			continue
 		}
+		sawAny = true
+		if rec.Phase == monitoringv1alpha1.ExecutionPhaseSucceeded {
+			break
+		}
+		count++
 	}
-done:
 	cjm.Status.ConsecutiveFailures = count
 
 	if !sawAny {
