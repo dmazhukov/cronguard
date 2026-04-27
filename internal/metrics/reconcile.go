@@ -1,7 +1,3 @@
-// Metrics for the reconcile loop itself. Separate from the CronJobMonitor
-// custom collector — these are registered via prometheus.DefaultRegisterer
-// and incremented/observed during Reconcile.
-
 package metrics
 
 import (
@@ -16,8 +12,6 @@ const (
 )
 
 // ReconcileTotal counts reconcile invocations per outcome.
-//
-// Labels: namespace, name, result (success|error|requeue).
 var ReconcileTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "cronguard_reconcile_total",
@@ -27,8 +21,6 @@ var ReconcileTotal = prometheus.NewCounterVec(
 )
 
 // ReconcileDurationSeconds observes reconcile latency.
-//
-// Labels: namespace, name.
 var ReconcileDurationSeconds = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "cronguard_reconcile_duration_seconds",

@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Real, production-grade content in `docs/runbooks/` for all five default alerts (was placeholders in v0.2.0). Each runbook has Symptom / Why this matters / Quick triage / Common causes / Remediation / Related signals / Appendix sections with copy-paste `kubectl` and PromQL.
+- Filled in `docs/runbooks/` content for the five default alerts (placeholders in v0.2.0). Each runbook is structured Symptom / Triage / Causes / Remediation / Appendix, with copy-paste `kubectl` and PromQL.
 - Dependabot weekly schedule (Mon 07:00 MSK) for Go modules (grouped: kubernetes, controller-runtime, observability), GitHub Actions, and the operator Dockerfile.
 - pre-commit hook framework (`.pre-commit-config.yaml`) running gofmt, govet, go-mod-tidy, golangci-lint, helm lint, promtool. Setup via `pip install pre-commit && pre-commit install`. Documented in new `docs/development.md`.
 - Real asciicast at `docs/cast/install.cast` recorded against an actual `kind` cluster, plus `docs/cast/install.gif` rendered via `agg` for inline GitHub README embed (replaces the synthetic cast from v0.2.0).

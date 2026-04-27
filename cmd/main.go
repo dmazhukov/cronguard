@@ -101,7 +101,7 @@ func main() {
 	if err := (&controller.CronJobMonitorReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("cronguard"), //nolint:staticcheck // SA1019: controller still uses record.EventRecorder; migration tracked separately
+		Recorder: mgr.GetEventRecorderFor("cronguard"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CronJobMonitor")
 		os.Exit(1)

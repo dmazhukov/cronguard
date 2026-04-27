@@ -30,12 +30,10 @@ func Merge(existing, incoming []monitoringv1alpha1.ExecutionRecord, limit int) [
 		out = append(out, r)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		// Newest first: later StartTime comes first.
 		if !out[i].StartTime.Equal(&out[j].StartTime) {
 			return out[i].StartTime.After(out[j].StartTime.Time)
 		}
-		// Tie-break on JobName for determinism.
-		return out[i].JobName > out[j].JobName
+		return out[i].JobName > out[j].JobName // tie-break for determinism
 	})
 	if len(out) > limit {
 		out = out[:limit]
