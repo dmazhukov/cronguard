@@ -146,7 +146,44 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		scheduleExpr = cj.Spec.Schedule
 	}
 
-	parsed, err := schedule.Parse(scheduleExpr)
+	tzName := cjm.Spec.TimeZone
+	if tzName == "" && cj.Spec.TimeZone != nil {
+		tzName = *cj.Spec.TimeZone
+	}
+	loc := time.UTC
+	resolvedTZ := "UTC"
+	if tzName != "" {
+		var lerr error
+		loc, lerr = time.LoadLocation(tzName)
+		if lerr != nil {
+			r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidTimeZone,
+				fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr))
+			if r.Recorder != nil {
+				r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidTimeZone,
+					fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr))
+			}
+			meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
+				Type:               monitoringv1alpha1.ConditionScheduleHealthy,
+				Status:             metav1.ConditionUnknown,
+				Reason:             monitoringv1alpha1.ReasonInvalidTimeZone,
+				Message:            "timeZone failed to load",
+				ObservedGeneration: cjm.Generation,
+			})
+			evaluateExecutionHealthy(cjm)
+			evaluateDurationHealthy(cjm)
+			evaluateReady(cjm)
+			res, err := r.patchStatus(ctx, cjm)
+			if err != nil {
+				result = metrics.ResultError
+			} else if res.RequeueAfter > 0 {
+				result = metrics.ResultRequeue
+			}
+			return res, err
+		}
+		resolvedTZ = tzName
+	}
+
+	parsed, err := schedule.ParseInLocation(scheduleExpr, loc)
 	if err != nil {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidSchedule,
 			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
@@ -173,6 +210,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return res, err
 	}
 	cjm.Status.ResolvedSchedule = &scheduleExpr
+	cjm.Status.ResolvedTimeZone = &resolvedTZ
 
 	owned, err := listOwnedJobs(ctx, r.Client, cj)
 	if err != nil {

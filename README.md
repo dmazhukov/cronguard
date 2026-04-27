@@ -67,6 +67,7 @@ spec:
   cronJobRef:
     name: nightly-settlement
   schedule: "0 2 * * *"
+  timeZone: "Europe/Moscow"      # optional; falls back to CronJob.spec.timeZone, then UTC
   maxDurationSeconds: 1800       # SLO: finish within 30 minutes
   maxConsecutiveFailures: 2      # alert after 2 failures in a row
   alertAfterMissedRuns: 2        # alert after 2 missed starts

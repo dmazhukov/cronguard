@@ -161,3 +161,77 @@ func TestMissedRunsSinceLastStartInFuture(t *testing.T) {
 		t.Fatalf("MissedRunsSince (boundary) = %d, want 0", got)
 	}
 }
+
+// TestParseInLocationNewYork verifies that "0 9 * * *" parsed in
+// America/New_York fires at 09:00 NY local — which is 13:00 UTC during EDT
+// (UTC-4) and 14:00 UTC during EST (UTC-5).
+func TestParseInLocationNewYork(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	s, err := schedule.ParseInLocation("0 9 * * *", ny)
+	if err != nil {
+		t.Fatalf("ParseInLocation: %v", err)
+	}
+
+	// 2026-07-15 — EDT (UTC-4). 09:00 NY = 13:00 UTC.
+	from := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	got := s.Next(from)
+	want := time.Date(2026, 7, 15, 13, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("EDT Next = %v, want %v", got, want)
+	}
+
+	// 2026-12-15 — EST (UTC-5). 09:00 NY = 14:00 UTC.
+	from = time.Date(2026, 12, 15, 12, 0, 0, 0, time.UTC)
+	got = s.Next(from)
+	want = time.Date(2026, 12, 15, 14, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("EST Next = %v, want %v", got, want)
+	}
+}
+
+// TestParseInLocationNilDefaultsUTC verifies a nil location parses as UTC,
+// and matches Parse(expr) bit-for-bit.
+func TestParseInLocationNilDefaultsUTC(t *testing.T) {
+	a, err := schedule.ParseInLocation("0 9 * * *", nil)
+	if err != nil {
+		t.Fatalf("ParseInLocation(nil): %v", err)
+	}
+	b, err := schedule.Parse("0 9 * * *")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	from := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	if !a.Next(from).Equal(b.Next(from)) {
+		t.Fatalf("nil-location Next %v != UTC Next %v", a.Next(from), b.Next(from))
+	}
+}
+
+// TestParseInLocationInlinePrefixWins covers the case where the expression
+// already carries a CRON_TZ= prefix — the inline location must take precedence
+// over the loc argument so user expressions remain explicit.
+func TestParseInLocationInlinePrefixWins(t *testing.T) {
+	utc, _ := time.LoadLocation("UTC")
+	s, err := schedule.ParseInLocation("CRON_TZ=America/New_York 0 9 * * *", utc)
+	if err != nil {
+		t.Fatalf("ParseInLocation: %v", err)
+	}
+	// EDT: 09:00 NY = 13:00 UTC, regardless of the UTC argument.
+	from := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	got := s.Next(from)
+	want := time.Date(2026, 7, 15, 13, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("inline-TZ Next = %v, want %v", got, want)
+	}
+}
+
+// TestParseInLocationInvalidExpression surfaces the parser error path through
+// ParseInLocation (covers the error wrap branch).
+func TestParseInLocationInvalidExpression(t *testing.T) {
+	_, err := schedule.ParseInLocation("not-a-cron", time.UTC)
+	if err == nil {
+		t.Fatalf("ParseInLocation(invalid) returned nil error")
+	}
+}

@@ -485,6 +485,114 @@ var _ = Describe("CronJobMonitor controller", func() {
 		err := k8sClient.Status().Update(ctx, second)
 		Expect(apierrors.IsConflict(err)).To(BeTrue(), "expected resource-version conflict on stale update")
 	})
+
+	It("evaluates schedule in spec.timeZone and reflects it in ResolvedTimeZone", func() {
+		// "0 9 * * *" in America/New_York fires at 09:00 NY local.
+		// Pin fake clock to 2026-07-15 12:00 UTC = 08:00 EDT — Next() must
+		// return 13:00 UTC (09:00 EDT) the same day.
+		cj := makeCronJob(namespace, "tz-ny-1", "0 9 * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		baseTime := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+		testClock.SetTime(baseTime)
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "tz-ny-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "tz-ny-1"},
+				TimeZone:               "America/New_York",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		want := time.Date(2026, 7, 15, 13, 0, 0, 0, time.UTC)
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "tz-ny-1-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			g.Expect(got.Status.ResolvedTimeZone).NotTo(BeNil())
+			g.Expect(*got.Status.ResolvedTimeZone).To(Equal("America/New_York"))
+			g.Expect(got.Status.NextExpectedTime).NotTo(BeNil())
+			g.Expect(got.Status.NextExpectedTime.UTC()).To(Equal(want))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("inherits timezone from CronJob.spec.timeZone when CJM.spec.timeZone is empty", func() {
+		cjTZ := "Europe/Moscow"
+		cj := makeCronJob(namespace, "tz-msk-1", "0 9 * * *")
+		cj.Spec.TimeZone = &cjTZ
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		// 2026-07-15 12:00 UTC = 15:00 MSK. Next() returns 09:00 MSK tomorrow
+		// = 06:00 UTC on 2026-07-16.
+		baseTime := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+		testClock.SetTime(baseTime)
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "tz-msk-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "tz-msk-1"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		want := time.Date(2026, 7, 16, 6, 0, 0, 0, time.UTC)
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "tz-msk-1-mon", Namespace: namespace}, got)).To(Succeed())
+			g.Expect(got.Status.ResolvedTimeZone).NotTo(BeNil())
+			g.Expect(*got.Status.ResolvedTimeZone).To(Equal("Europe/Moscow"))
+			g.Expect(got.Status.NextExpectedTime).NotTo(BeNil())
+			g.Expect(got.Status.NextExpectedTime.UTC()).To(Equal(want))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("reports InvalidTimeZone when spec.timeZone fails to load", func() {
+		cj := makeCronJob(namespace, "tz-bad-1", "0 9 * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "tz-bad-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "tz-bad-1"},
+				TimeZone:               "Mars/Olympus",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "tz-bad-1-mon", Namespace: namespace}, got)).To(Succeed())
+			rec := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(rec).NotTo(BeNil())
+			g.Expect(rec.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(rec.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidTimeZone))
+			sched := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+			g.Expect(sched).NotTo(BeNil())
+			g.Expect(sched.Status).To(Equal(metav1.ConditionUnknown))
+			g.Expect(sched.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidTimeZone))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
 })
 
 // findCondition is a test helper.
