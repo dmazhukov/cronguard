@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (critical)
+
+- Container image now publishes under both `ghcr.io/dmazhukov/cronguard:vX.Y.Z` (matches the git tag) and `ghcr.io/dmazhukov/cronguard:X.Y.Z` (matches `Chart.AppVersion`). Previously only the `v`-prefixed tag was pushed, which meant `helm install` with default values rendered `image: ghcr.io/dmazhukov/cronguard:0.2.5` and got `ImagePullBackOff` — that tag didn't exist, only `:v0.2.5` did. Bug shipped silently from v0.2.0 because the e2e workflow overrides `image.tag` explicitly with the kind-loaded build, so the default-values install path was never tested against the published registry.
+
 ## [0.2.5] - 2026-04-27
 
 ### Fixed

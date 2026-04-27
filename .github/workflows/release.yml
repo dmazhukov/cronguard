@@ -89,6 +89,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Strip leading "v" so the image carries both forms:
+      #   ghcr.io/.../cronguard:v0.2.6  (matches the git tag)
+      #   ghcr.io/.../cronguard:0.2.6   (matches Chart.AppVersion, which is
+      #                                   what the Helm chart's deployment
+      #                                   template renders by default)
+      # Without the bare-semver tag, helm install with default values yields
+      # ImagePullBackOff because .Chart.AppVersion is set to "0.2.6" (no v).
+      - name: Compute semver tag (no v prefix)
+        id: ver
+        run: echo "no_v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build & push multi-arch image
         uses: docker/build-push-action@v6
         with:
@@ -97,6 +108,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/dmazhukov/cronguard:${{ github.ref_name }}
+            ghcr.io/dmazhukov/cronguard:${{ steps.ver.outputs.no_v }}
             ghcr.io/dmazhukov/cronguard:latest
           build-args: |
             VERSION=${{ github.ref_name }}
