@@ -120,6 +120,11 @@ func (in *CronJobMonitorStatus) DeepCopyInto(out *CronJobMonitorStatus) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.ResolvedTimeZone != nil {
+		in, out := &in.ResolvedTimeZone, &out.ResolvedTimeZone
+		*out = new(string)
+		**out = **in
+	}
 	if in.LastScheduleTime != nil {
 		in, out := &in.LastScheduleTime, &out.LastScheduleTime
 		*out = (*in).DeepCopy()

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `CronJobMonitor.spec.timeZone` (IANA name, e.g. `America/New_York`) — schedule evaluation now honors the timezone explicitly. Resolution order: `spec.timeZone` → referenced `CronJob.spec.timeZone` → UTC. Status surfaces the resolved zone in `status.resolvedTimeZone`. Closes phantom missed-run reports for CronJobs running outside UTC.
+- `internal/schedule.ParseInLocation(expr, loc)` for callers that need explicit timezone binding. `Parse(expr)` now defaults to UTC instead of inheriting `time.Local`, eliminating the silent drift when the operator container's `TZ` env is unset.
+- `time/tzdata` embedded in the binary so `time.LoadLocation` succeeds inside `distroless/static` (which omits `/usr/share/zoneinfo`). Image grows ~450 KB; schedule evaluation is now base-image-independent.
+
+### Fixed
+
+- `ReasonInvalidTimeZone` surfaces malformed `spec.timeZone` as `Reconciled=False` + `ScheduleHealthy=Unknown`, instead of reverting to UTC silently. Mirrors the existing `InvalidSchedule` failure path.
+
 ## [0.2.3] - 2026-04-27
 
 ### Fixed (correctness)

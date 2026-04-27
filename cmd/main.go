@@ -9,6 +9,11 @@ import (
 	"flag"
 	"os"
 
+	// Embed the IANA timezone database so time.LoadLocation succeeds inside
+	// distroless/static containers (which omit /usr/share/zoneinfo). Keeps
+	// schedule evaluation deterministic regardless of base image.
+	_ "time/tzdata"
+
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/runtime"

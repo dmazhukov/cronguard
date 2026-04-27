@@ -5,6 +5,7 @@ package schedule
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -23,12 +24,33 @@ type Schedule struct {
 }
 
 // Parse parses a 5-field cron expression or a supported descriptor
-// (@hourly, @daily, @weekly, @monthly, @yearly).
+// (@hourly, @daily, @weekly, @monthly, @yearly) in UTC.
+//
+// Equivalent to ParseInLocation(expr, time.UTC).
 func Parse(expr string) (*Schedule, error) {
+	return ParseInLocation(expr, time.UTC)
+}
+
+// ParseInLocation parses a cron expression and binds it to loc. If loc is nil
+// the expression is evaluated in UTC.
+//
+// If the expression itself carries a CRON_TZ=/TZ= prefix, the inline location
+// wins and loc is ignored — this preserves robfig/cron native syntax. Without
+// a prefix the parser would otherwise fall back to time.Local, which depends
+// on the container's TZ env and silently drifts schedules; binding to UTC by
+// default eliminates that footgun.
+func ParseInLocation(expr string, loc *time.Location) (*Schedule, error) {
 	if expr == "" {
 		return nil, ErrEmpty
 	}
-	s, err := parser.Parse(expr)
+	fullExpr := expr
+	if !strings.HasPrefix(expr, "CRON_TZ=") && !strings.HasPrefix(expr, "TZ=") {
+		if loc == nil {
+			loc = time.UTC
+		}
+		fullExpr = "CRON_TZ=" + loc.String() + " " + expr
+	}
+	s, err := parser.Parse(fullExpr)
 	if err != nil {
 		return nil, fmt.Errorf("schedule: parse %q: %w", expr, err)
 	}

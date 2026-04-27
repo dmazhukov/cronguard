@@ -44,6 +44,15 @@ type CronJobMonitorSpec struct {
 	// +kubebuilder:validation:MaxLength=128
 	Schedule string `json:"schedule,omitempty"`
 
+	// TimeZone is the IANA time-zone name (e.g. "America/New_York", "Europe/Moscow")
+	// the schedule is evaluated in. When unset, the controller falls back to
+	// the referenced CronJob's spec.timeZone, then to UTC. Has no effect when
+	// the schedule expression already carries a CRON_TZ=/TZ= prefix.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	TimeZone string `json:"timeZone,omitempty"`
+
 	// MaxDurationSeconds is the SLO for a single Job's wall-clock duration.
 	// When unset, the check is disabled.
 	// +optional
@@ -115,6 +124,11 @@ type CronJobMonitorStatus struct {
 	// +optional
 	ResolvedSchedule *string `json:"resolvedSchedule,omitempty"`
 
+	// ResolvedTimeZone is the IANA time zone the schedule was evaluated in
+	// (spec.timeZone, or the referenced CronJob's spec.timeZone, or UTC).
+	// +optional
+	ResolvedTimeZone *string `json:"resolvedTimeZone,omitempty"`
+
 	// +optional
 	LastScheduleTime *metav1.Time `json:"lastScheduleTime,omitempty"`
 	// +optional
@@ -150,6 +164,7 @@ const (
 const (
 	ReasonReconcileSuccess    = "ReconcileSuccess"
 	ReasonInvalidSchedule     = "InvalidSchedule"
+	ReasonInvalidTimeZone     = "InvalidTimeZone"
 	ReasonCronJobNotFound     = "CronJobNotFound"
 	ReasonCronJobSuspended    = "CronJobSuspended"
 	ReasonOnSchedule          = "OnSchedule"

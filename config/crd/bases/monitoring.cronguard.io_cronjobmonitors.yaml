@@ -124,6 +124,15 @@ spec:
                 maxLength: 128
                 minLength: 1
                 type: string
+              timeZone:
+                description: |-
+                  TimeZone is the IANA time-zone name (e.g. "America/New_York", "Europe/Moscow")
+                  the schedule is evaluated in. When unset, the controller falls back to
+                  the referenced CronJob's spec.timeZone, then to UTC. Has no effect when
+                  the schedule expression already carries a CRON_TZ=/TZ= prefix.
+                maxLength: 64
+                minLength: 1
+                type: string
             required:
             - cronJobRef
             type: object
@@ -258,6 +267,11 @@ spec:
                 description: |-
                   ResolvedSchedule is the schedule used for evaluation (spec.schedule or
                   CronJob.spec.schedule).
+                type: string
+              resolvedTimeZone:
+                description: |-
+                  ResolvedTimeZone is the IANA time zone the schedule was evaluated in
+                  (spec.timeZone, or the referenced CronJob's spec.timeZone, or UTC).
                 type: string
               scheduleDriftSeconds:
                 description: ScheduleDriftSeconds is the drift of the most recent
