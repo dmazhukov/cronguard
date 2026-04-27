@@ -12,6 +12,42 @@ entries:
         - name: OCI
           url: oci://ghcr.io/dmazhukov/charts/cronguard
     apiVersion: v2
+    appVersion: 0.2.3
+    created: "2026-04-27T05:25:07.013786108Z"
+    description: SLO-style observability operator for Kubernetes CronJobs
+    digest: 4754c275a96a094657abcb941c7098ce4050fca12ee9da3985b27a3827cc6f47
+    home: https://github.com/dmazhukov/cronguard
+    keywords:
+    - kubernetes
+    - operator
+    - cronjob
+    - prometheus
+    - sre
+    - slo
+    - monitoring
+    kubeVersion: '>=1.28.0-0'
+    maintainers:
+    - email: dmitry0983@gmail.com
+      name: Dmitrii Zhukov
+      url: https://github.com/dmazhukov
+    name: cronguard
+    sources:
+    - https://github.com/dmazhukov/cronguard
+    type: application
+    urls:
+    - https://dmazhukov.github.io/cronguard/cronguard-0.2.3.tgz
+    version: 0.2.3
+  - annotations:
+      artifacthub.io/category: monitoring
+      artifacthub.io/changes: |
+        - Initial Helm chart release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: GitHub
+          url: https://github.com/dmazhukov/cronguard
+        - name: OCI
+          url: oci://ghcr.io/dmazhukov/charts/cronguard
+    apiVersion: v2
     appVersion: 0.2.2
     created: "2026-04-25T11:13:35.706406237Z"
     description: SLO-style observability operator for Kubernetes CronJobs
@@ -109,4 +145,4 @@ entries:
     urls:
     - https://dmazhukov.github.io/cronguard/cronguard-0.2.0.tgz
     version: 0.2.0
-generated: "2026-04-25T11:13:35.705617649Z"
+generated: "2026-04-27T05:25:07.01298414Z"
