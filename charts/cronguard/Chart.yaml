@@ -21,7 +21,7 @@ maintainers:
     email: dmitry0983@gmail.com
     url: https://github.com/dmazhukov
 annotations:
-  artifacthub.io/category: monitoring
+  artifacthub.io/category: monitoring-logging
   artifacthub.io/license: Apache-2.0
   artifacthub.io/changes: |
     - Initial Helm chart release
