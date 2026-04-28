@@ -201,3 +201,74 @@ jobs:
           commit_message: "publish ${{ steps.package.outputs.filename }}"
           user_name: github-actions[bot]
           user_email: 41898282+github-actions[bot]@users.noreply.github.com
+
+  # Auto-bump --version pins and download URLs in README, chart README, and
+  # docs/distribution.md after a successful chart publish. Without this,
+  # README pins drift behind the actual latest release every time we forget
+  # to update them in the release PR (see PR #35 for the v0.2.2 → v0.2.6
+  # cleanup that motivated this).
+  #
+  # Depends on chart so we don't bump pins for a release that failed to
+  # publish artifacts.
+  #
+  # Caveat: GitHub Actions does NOT trigger ci.yml on a PR opened with
+  # GITHUB_TOKEN (loop-prevention). The PR sits with no checks until a
+  # human closes+reopens it (one click), or it's merged via admin bypass
+  # since the change is docs-only.
+  bump-docs:
+    runs-on: ubuntu-latest
+    needs: [verify, release, chart]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Compute bare-semver version
+        id: ver
+        run: echo "no_v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Bump pins in docs
+        env:
+          NEW_VER: ${{ steps.ver.outputs.no_v }}
+        run: |
+          set -euo pipefail
+          for f in README.md charts/cronguard/README.md docs/distribution.md; do
+            sed -i -E "
+              s#(--version )[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+              s#(releases/download/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+              s#(github\.com/dmazhukov/cronguard/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+              s#(raw\.githubusercontent\.com/dmazhukov/cronguard/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+            " "$f"
+          done
+
+      - name: Create or update pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: docs/auto-bump-pins
+          delete-branch: true
+          base: main
+          commit-message: "docs: bump Quickstart pins to ${{ steps.ver.outputs.no_v }}"
+          title: "docs: bump Quickstart pins to ${{ steps.ver.outputs.no_v }} (auto)"
+          body: |
+            Automatic bump after release `${{ github.ref_name }}` shipped
+            (chart published to GHCR + GH Pages). This PR is opened idempotently
+            by `release.yml`'s `bump-docs` job.
+
+            Updated `--version` pins and download URLs across:
+            - `README.md`
+            - `charts/cronguard/README.md`
+            - `docs/distribution.md`
+
+            ## How to merge
+
+            CI does not auto-trigger on this PR — `GITHUB_TOKEN`-opened PRs
+            don't kick off other workflows by design. Two options:
+
+            1. **Close + reopen the PR** to trigger `ci.yml`, then merge once green.
+            2. **Merge via admin bypass** — the change is docs-only and goes through `sed` regex tested against the same files for years.
+          labels: docs,auto
