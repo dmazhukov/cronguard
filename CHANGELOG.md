@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Quickstart pins in `README.md`, `charts/cronguard/README.md`, and `docs/distribution.md` bumped from `0.2.2` to `0.2.6`. The pins had been stuck at `0.2.2` despite four releases since (`0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`). README Roadmap updated to mention shipped timezone-aware schedules (`spec.timeZone`) under v0.2.x.
 
+### CI
+
+- `release.yml` gained a `bump-docs` job that runs after `chart` publishes successfully and opens a PR via `peter-evans/create-pull-request@v7` with the version pins bumped to `${tag#v}` across README, chart README, and `docs/distribution.md`. Idempotent (no-op if pins are already current). Closes the v0.2.2 → v0.2.6 doc-drift class of bug. Caveat: PR opened by `GITHUB_TOKEN` does not auto-trigger `ci.yml` (Actions loop-prevention); merge via close+reopen or admin bypass.
+
 ## [0.2.6] - 2026-04-27
 
 ### Fixed (critical)
