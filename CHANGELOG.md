@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Quickstart pins in `README.md`, `charts/cronguard/README.md`, and `docs/distribution.md` bumped from `0.2.2` to `0.2.6`. The pins had been stuck at `0.2.2` despite four releases since (`0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`). README Roadmap updated to mention shipped timezone-aware schedules (`spec.timeZone`) under v0.2.x.
+
 ## [0.2.6] - 2026-04-27
 
 ### Fixed (critical)
