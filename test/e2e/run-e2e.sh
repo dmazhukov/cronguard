@@ -19,7 +19,8 @@ cleanup() {
   if [[ "$rc" -ne 0 ]]; then
     log "FAILURE (exit=$rc) — collecting diagnostics"
     kubectl -n "$RELEASE_NS" get pods -o wide || true
-    kubectl -n "$RELEASE_NS" describe deploy --all || true
+    kubectl -n "$RELEASE_NS" describe deploy || true
+    kubectl -n "$RELEASE_NS" describe pods || true
     kubectl -n "$RELEASE_NS" logs deploy/cronguard --tail=200 -c manager || true
     kubectl -n "$SAMPLE_NS" get cronjobmonitors -o yaml || true
   fi
@@ -47,6 +48,14 @@ helm install cronguard ./charts/cronguard \
   --set image.tag="${IMG##*:}" \
   --set image.pullPolicy=IfNotPresent \
   --wait --timeout "$TIMEOUT"
+
+# `helm install --wait` returns when Deployment.status.readyReplicas matches
+# spec.replicas, but the nightly run on 2026-04-28 caught a race where it
+# returned with the pod still in ContainerCreating (helm v3.18.4). Belt and
+# suspenders: explicitly wait for Available before doing anything that needs
+# the pod to actually be running, e.g. port-forward.
+log "Waiting for operator deployment Available"
+kubectl -n "$RELEASE_NS" wait --for=condition=Available --timeout=120s deployment/cronguard
 
 log "Operator pods"
 kubectl -n "$RELEASE_NS" get pods
