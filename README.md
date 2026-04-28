@@ -25,7 +25,7 @@ CronGuard replaces that with a declarative SLO per CronJob.
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.2.2 \
+  --version 0.2.6 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -34,14 +34,14 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.2.2 \
+helm install cronguard cronguard/cronguard --version 0.2.6 \
   --namespace cronguard-system --create-namespace
 ```
 
 ### Raw manifests
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.2.2/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.2.6/install.yaml
 ```
 
 Apply a sample monitor:
@@ -134,7 +134,7 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) â
 
 ## Roadmap
 
-Shipped (v0.2.x): operator core, CRD, envtest suite, raw manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
+Shipped (v0.2.x): operator core, CRD, envtest suite, raw manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing, timezone-aware schedules (`spec.timeZone` with fallback to `CronJob.spec.timeZone`).
 
 Considered for v0.3+: admission webhook (CEL validation), OLM bundle, burn-rate alerts.
 
