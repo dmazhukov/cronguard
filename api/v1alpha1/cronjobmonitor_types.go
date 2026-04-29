@@ -208,6 +208,6 @@ type CronJobMonitorList struct {
 	Items           []CronJobMonitor `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&CronJobMonitor{}, &CronJobMonitorList{})
-}
+// Type registration moved to groupversion_info.go's addKnownTypes() so the
+// API package no longer depends on controller-runtime's deprecated
+// scheme.Builder helper.
