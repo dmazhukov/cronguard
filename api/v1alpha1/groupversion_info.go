@@ -20,8 +20,9 @@ limitations under the License.
 package v1alpha1
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
 var (
@@ -33,8 +34,25 @@ var (
 	GroupVersion = SchemeGroupVersion
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
-	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
+	// We use runtime.SchemeBuilder directly (instead of controller-runtime's
+	// pkg/scheme.Builder) so the API package doesn't pull controller-runtime
+	// as a dependency — the controller-runtime helper was deprecated in
+	// v0.24+ specifically to keep API packages thin.
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+// addKnownTypes registers the v1alpha1 API types and metav1 list/object kinds
+// with the supplied runtime scheme. Equivalent to what
+// controller-runtime's scheme.Builder used to do, but written against
+// apimachinery directly so this package has no controller-runtime dependency.
+func addKnownTypes(scheme *runtime.Scheme) error {
+	scheme.AddKnownTypes(SchemeGroupVersion,
+		&CronJobMonitor{},
+		&CronJobMonitorList{},
+	)
+	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
+	return nil
+}
