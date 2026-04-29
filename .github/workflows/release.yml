@@ -131,7 +131,7 @@ jobs:
           kustomize build config/default > install.yaml
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             install.yaml
