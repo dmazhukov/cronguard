@@ -14,6 +14,21 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
+    # controller-runtime is currently pinned to a main-branch pseudo-version
+    # because v0.24 (the first release supporting K8s 0.36's enlarged
+    # ResourceEventHandlerRegistration interface) hasn't been tagged yet.
+    # Without this ignore, Dependabot proposes a "downgrade" from the
+    # pseudo-version to the latest tagged release (v0.23.3) every week —
+    # which reverts the K8s 0.36 compatibility work and breaks CI (see PR
+    # #49, closed 2026-04-29). Remove the rule the moment v0.24.0 ships:
+    # the bot will then propose a real upgrade and the kubernetes group
+    # bump can move forward cleanly.
+    ignore:
+      - dependency-name: "sigs.k8s.io/controller-runtime"
+        versions: ["< 0.24.0"]
+      - dependency-name: "sigs.k8s.io/controller-tools"
+        versions: ["< 0.18.0"]
+
     groups:
       # Single kubernetes group covers BOTH k8s.io/* and sigs.k8s.io/*
       # (controller-runtime, controller-tools, etc). They MUST move together
