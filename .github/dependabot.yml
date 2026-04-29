@@ -15,14 +15,18 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      # Single kubernetes group covers BOTH k8s.io/* and sigs.k8s.io/*
+      # (controller-runtime, controller-tools, etc). They MUST move together
+      # because controller-runtime's interfaces compose with client-go's
+      # ResourceEventHandlerRegistration et al — bumping K8s ahead of
+      # controller-runtime produces unbuildable code (see PR #17 / #40,
+      # 2026-04-29). The previous split (kubernetes + controller-runtime)
+      # had overlapping patterns and let Dependabot push K8s 0.36 alone,
+      # which couldn't pass CI.
       kubernetes:
         patterns:
           - "k8s.io/*"
           - "sigs.k8s.io/*"
-      controller-runtime:
-        patterns:
-          - "sigs.k8s.io/controller-runtime"
-          - "sigs.k8s.io/controller-tools"
       observability:
         patterns:
           - "github.com/prometheus/*"
