@@ -1,6 +1,8 @@
 # CronGuard
 
 [![CI](https://github.com/dmazhukov/cronguard/actions/workflows/ci.yml/badge.svg)](https://github.com/dmazhukov/cronguard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dmazhukov/cronguard)](https://github.com/dmazhukov/cronguard/releases/latest)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/cronguard)](https://artifacthub.io/packages/helm/cronguard/cronguard)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dmazhukov/cronguard)](https://goreportcard.com/report/github.com/dmazhukov/cronguard)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/dmazhukov/cronguard)](go.mod)

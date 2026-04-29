@@ -104,9 +104,16 @@ func main() {
 	crmetrics.Registry.MustRegister(buildInfo)
 
 	if err := (&controller.CronJobMonitorReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("cronguard"),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		// GetEventRecorderFor returns a record.EventRecorder (legacy events
+		// API). controller-runtime also exposes GetEventRecorder which returns
+		// the newer events.EventRecorder, but the new API requires regarding
+		// + related runtime.Object pairs and an explicit action string for
+		// every Eventf call — wrong shape for our reason-driven status events.
+		// Migration deferred to v0.3+ when we either drop events entirely or
+		// commit to the new API everywhere.
+		Recorder: mgr.GetEventRecorderFor("cronguard"), //nolint:staticcheck // SA1019: see comment above
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CronJobMonitor")
 		os.Exit(1)
