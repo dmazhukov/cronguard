@@ -75,10 +75,11 @@ var _ = BeforeSuite(func() {
 	testClock = clocktesting.NewFakePassiveClock(time.Now())
 
 	reconciler := &CronJobMonitorReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Clock:    testClock,
-		Recorder: mgr.GetEventRecorderFor("cronguard"),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Clock:  testClock,
+		// SA1019 deferred: see cmd/main.go for rationale.
+		Recorder: mgr.GetEventRecorderFor("cronguard"), //nolint:staticcheck
 	}
 	Expect(reconciler.SetupWithManager(mgr)).To(Succeed())
 
