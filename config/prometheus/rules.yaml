@@ -59,12 +59,17 @@ spec:
       interval: 30s
       rules:
         - alert: CronGuardOperatorDown
-          expr: up{job=~".*controller-manager-metrics.*"} == 0
+          # `absent()` fires when no `cronguard_build_info` series is being
+          # scraped — i.e., no CronGuard operator is exporting metrics at
+          # all. Independent of the user's Prometheus job naming, which
+          # made the previous `up{job=~"...controller-manager-metrics.*"}`
+          # matcher silently never-fire on non-default scrape configs.
+          expr: absent(cronguard_build_info) == 1
           for: 2m
           labels:
             severity: critical
             component: cronguard
           annotations:
             summary: "CronGuard operator is down"
-            description: "Prometheus has not been able to scrape CronGuard /metrics for at least 2 minutes. The operator may be crashlooping or unreachable."
+            description: "Prometheus has not seen the cronguard_build_info series for at least 2 minutes. The operator is crashlooping, unscheduled, or unreachable."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/operator-down.md"
