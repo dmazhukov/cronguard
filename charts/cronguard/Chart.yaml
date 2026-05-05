@@ -2,8 +2,8 @@ apiVersion: v2
 name: cronguard
 description: SLO-style observability operator for Kubernetes CronJobs
 type: application
-version: 0.2.6
-appVersion: "0.2.6"
+version: 0.2.7
+appVersion: "0.2.7"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/dmazhukov/cronguard
 sources:
