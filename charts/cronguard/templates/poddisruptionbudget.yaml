@@ -1,0 +1,27 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- if and (eq (int .Values.replicaCount) 1) .Values.podDisruptionBudget.enabled }}
+{{- /*
+A PDB on a single-replica Deployment cannot block voluntary disruption
+(maxSurge: 0 in our RollingUpdate strategy means there's never a second
+pod for the budget to keep), and would cause kubectl drain to hang
+indefinitely. Refuse this combination explicitly.
+*/}}
+{{- fail "podDisruptionBudget.enabled requires replicaCount > 1" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cronguard.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cronguard.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cronguard.selectorLabels" . | nindent 6 }}
+{{- end }}
