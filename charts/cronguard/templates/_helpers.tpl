@@ -43,9 +43,17 @@ app.kubernetes.io/part-of: cronguard
 
 {{/*
 Selector labels.
+
+Hardcoded `name: cronguard` (literal) rather than `cronguard.name`
+because selector labels on a Deployment are immutable after creation.
+If a user re-rendered with a different `nameOverride`, the rendered
+selector would change and `helm upgrade` would fail with
+`field is immutable: spec.selector`. Cosmetic label customization
+stays possible via `cronguard.labels` (which still includes the
+`nameOverride`-aware components for non-selector tags).
 */}}
 {{- define "cronguard.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "cronguard.name" . }}
+app.kubernetes.io/name: cronguard
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
