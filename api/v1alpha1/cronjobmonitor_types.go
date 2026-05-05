@@ -167,6 +167,7 @@ const (
 	ReasonInvalidTimeZone     = "InvalidTimeZone"
 	ReasonCronJobNotFound     = "CronJobNotFound"
 	ReasonCronJobSuspended    = "CronJobSuspended"
+	ReasonScheduleMismatch    = "ScheduleMismatch"
 	ReasonOnSchedule          = "OnSchedule"
 	ReasonScheduleMissed      = "ScheduleMissed"
 	ReasonSuspended           = "Suspended"
