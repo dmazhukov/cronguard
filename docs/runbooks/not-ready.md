@@ -55,23 +55,35 @@ This page is meta — its job is to direct triage to the right place. Once you k
 
 ### Reconciler failures (`Reconciled=False`)
 
-Read the `message` on the False condition; common values:
+The `reason` on the False `Reconciled` condition is one of these PascalCase strings (defined in `api/v1alpha1` as `Reason*` constants):
 
-- `cronJobNotFound` — the referenced CronJob was deleted or the `cronJobRef.name` is wrong.
+- `CronJobNotFound` — the referenced CronJob was deleted or the `cronJobRef.name` is wrong.
   ```bash
   kubectl get cronjob <ref-name> -n <ns>
   kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.cronJobRef}'
   ```
   Either restore the CronJob or fix `cronJobRef.name` on the monitor.
-- `parseScheduleError` — schedule expression no longer accepted by the parser. Check the spec:
+- `CronJobSuspended` — the referenced CronJob has `spec.suspend: true`. Intentional pauses are normal; check whether the suspend was intended:
   ```bash
+  kubectl get cronjob <ref-name> -n <ns> -o jsonpath='{.spec.suspend}'
+  ```
+  Resume with `kubectl patch cronjob <ref-name> -n <ns> --type=merge -p '{"spec":{"suspend":false}}'`.
+- `InvalidSchedule` — schedule expression no longer accepted by the parser. Check both the monitor and the CronJob (`CronJobMonitor.spec.schedule` overrides `CronJob.spec.schedule` when set):
+  ```bash
+  kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.schedule}'
   kubectl get cronjob <ref-name> -n <ns> -o jsonpath='{.spec.schedule}'
   ```
-  Fix the expression (CronGuard accepts standard 5-field cron with the robfig/cron v3 grammar).
-- `statusUpdateConflict` (rare, transient) — usually self-heals; if persistent, inspect operator logs for retry storms:
+  CronGuard accepts standard 5-field cron with the robfig/cron v3 grammar; `@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly` descriptors and inline `CRON_TZ=Region/City ...` prefixes also work.
+- `InvalidTimeZone` — `spec.timeZone` (or the referenced CronJob's `spec.timeZone`) failed `time.LoadLocation`. Must be an IANA name (`America/New_York`, `Europe/Moscow`, `UTC`); operating-system aliases like `EST` or `PST` are rejected.
   ```bash
-  kubectl -n cronguard-system logs deploy/cronguard --tail=500 | grep -i conflict
+  kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.timeZone}'
+  kubectl get cronjob <ref-name> -n <ns> -o jsonpath='{.spec.timeZone}'
   ```
+
+If the controller is hitting transient ResourceVersion conflicts on status updates, you'll see `cronguard_reconcile_total{result="requeue"}` rate climb without `result="error"` rising — that's the optimistic-lock retry path, normally self-healing. Inspect logs for sustained churn:
+```bash
+kubectl -n cronguard-system logs deploy/cronguard --tail=500 | grep -iE "conflict|status update"
+```
 
 ### Operator just restarted
 
