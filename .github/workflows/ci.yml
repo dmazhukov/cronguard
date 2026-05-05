@@ -70,7 +70,7 @@ jobs:
       # filter set to HIGH/CRITICAL to keep the gate signal-only;
       # MEDIUM and below produce informational logs that don't fail CI.
       - name: trivy image scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cronguard:ci
           severity: HIGH,CRITICAL
