@@ -62,7 +62,21 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: cronguard:ci
+      # Image-level CVE scan. govulncheck (separate job) covers the Go
+      # dependency tree only. Trivy adds OS-level scanning of the
+      # distroless layer for any glibc / libssl-style CVEs. Severity
+      # filter set to HIGH/CRITICAL to keep the gate signal-only;
+      # MEDIUM and below produce informational logs that don't fail CI.
+      - name: trivy image scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: cronguard:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
 
   vuln:
     runs-on: ubuntu-latest
