@@ -90,3 +90,55 @@ jobs:
         run: |
           # The file is a PrometheusRule CRD; promtool wants bare RuleGroups.
           yq eval '.spec' config/prometheus/rules.yaml | promtool check rules /dev/stdin
+
+  # Guards that the regenerated outputs of `make manifests generate` match what's
+  # checked into the repo. Without this, a contributor changing a kubebuilder
+  # marker (e.g., +kubebuilder:validation:Pattern) and forgetting `make
+  # manifests` lets the CRD YAML drift from the Go struct silently, which
+  # then ships as a broken release. Standard kubebuilder pattern.
+  manifests-clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Regenerate
+        run: make manifests generate
+      - name: Diff
+        run: |
+          if ! git diff --exit-code config/crd config/rbac api/v1alpha1/zz_generated.deepcopy.go; then
+            echo "::error::Generated files are stale. Run 'make manifests generate' locally and commit the result."
+            exit 1
+          fi
+
+  # Phase 2 spec §6 acceptance criteria: helm lint + kubeconform on all
+  # rendering combinations of the chart. Catches templating errors (typos
+  # in {{ .Values.x }}, missing keys, indent regressions) before they reach
+  # users.
+  chart-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.18.4
+      - name: helm lint
+        run: helm lint charts/cronguard
+      - name: Install kubeconform
+        run: |
+          KUBECONFORM_VERSION=v0.6.7
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: kubeconform default values
+        run: |
+          helm template charts/cronguard | kubeconform -strict -summary -ignore-missing-schemas -
+      - name: kubeconform — full opt-ins
+        run: |
+          helm template charts/cronguard \
+            --set serviceMonitor.enabled=true \
+            --set prometheusRule.enabled=true \
+            --set replicaCount=2 \
+            --set podDisruptionBudget.enabled=true \
+            | kubeconform -strict -summary -ignore-missing-schemas -

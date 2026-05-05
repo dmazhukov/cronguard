@@ -200,6 +200,9 @@ spec:
                   type: object
                 maxItems: 10
                 type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               consecutiveFailures:
                 description: ConsecutiveFailures counts terminal failures in a row;
                   resets on success.
@@ -228,8 +231,11 @@ spec:
                 format: int64
                 type: integer
               recentExecutions:
-                description: RecentExecutions is a newest-first ring buffer of size
-                  HistoryLimit.
+                description: |-
+                  RecentExecutions is a newest-first ring buffer of size HistoryLimit.
+                  Server-side apply treats this as atomic — a writer fully replaces the
+                  list rather than merging. The reconciler is the only writer in
+                  practice.
                 items:
                   description: ExecutionRecord summarises a single Job execution observed
                     by the controller.
@@ -265,6 +271,7 @@ spec:
                   type: object
                 maxItems: 100
                 type: array
+                x-kubernetes-list-type: atomic
               resolvedSchedule:
                 description: |-
                   ResolvedSchedule is the schedule used for evaluation (spec.schedule or
