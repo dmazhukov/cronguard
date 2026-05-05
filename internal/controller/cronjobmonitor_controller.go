@@ -30,6 +30,30 @@ import (
 	"github.com/dmazhukov/cronguard/internal/schedule"
 )
 
+// Tunables. Named so the rationale lives next to the constant rather than
+// scattered across the reconcile body.
+const (
+	// requeueAfterError is the requeue interval for early-return error paths
+	// (CronJob not found, suspended, invalid schedule, invalid timezone). Short
+	// enough that the operator notices recovery quickly; long enough that a
+	// stuck monitor doesn't generate a reconcile every few seconds.
+	requeueAfterError = 30 * time.Second
+
+	// requeueAfterConflict requeues after a status-update ResourceVersion
+	// conflict. controller-runtime's RateLimited backoff would also work; an
+	// explicit short requeue gets us back faster on a plain race.
+	requeueAfterConflict = time.Second
+
+	// requeueLeadJitter is added to the next-expected-run delta so the
+	// reconciler doesn't fire microseconds before the slot.
+	requeueLeadJitter = 5 * time.Second
+
+	// requeueAfterReconcileMin is the floor on the happy-path requeue
+	// interval. Cron expressions with sub-minute frequencies still requeue
+	// at least every minute.
+	requeueAfterReconcileMin = time.Minute
+)
+
 // CronJobMonitorReconciler reconciles a CronJobMonitor object.
 type CronJobMonitorReconciler struct {
 	client.Client
@@ -92,10 +116,11 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if !cronJobFound {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
 			fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
-		if r.Recorder != nil {
-			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobNotFound,
-				fmt.Sprintf("CronJob %q not found", cjKey.Name))
-		}
+		// CronJob may reappear; reset schedule numerics so the metric reflects
+		// "we're not measuring anything right now" rather than the last value
+		// from before the CronJob disappeared.
+		cjm.Status.MissedRuns = 0
+		cjm.Status.ScheduleDriftSeconds = 0
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -103,25 +128,16 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Message:            "no schedule available",
 			ObservedGeneration: cjm.Generation,
 		})
-		evaluateExecutionHealthy(cjm)
-		evaluateDurationHealthy(cjm)
-		evaluateReady(cjm)
-		res, err := r.patchStatus(ctx, cjm)
-		if err != nil {
-			result = metrics.ResultError
-		} else if res.RequeueAfter > 0 {
-			result = metrics.ResultRequeue
-		}
-		return res, err
+		return r.finishEarlyReturn(ctx, cjm, priorReconciled,
+			corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobNotFound,
+			fmt.Sprintf("CronJob %q not found", cjKey.Name), &result)
 	}
 
 	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobSuspended,
 			"referenced CronJob has suspend=true")
-		if r.Recorder != nil {
-			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobSuspended,
-				"CronJob is suspended")
-		}
+		// Spec §5.6: missed-run counter frozen on suspend (not reset).
+		// Drift left as-is too; both will refresh on unsuspend.
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -129,19 +145,13 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Message:            "CronJob is suspended; missed-run counter frozen",
 			ObservedGeneration: cjm.Generation,
 		})
-		evaluateExecutionHealthy(cjm)
-		evaluateDurationHealthy(cjm)
-		evaluateReady(cjm)
-		res, err := r.patchStatus(ctx, cjm)
-		if err != nil {
-			result = metrics.ResultError
-		} else if res.RequeueAfter > 0 {
-			result = metrics.ResultRequeue
-		}
-		return res, err
+		return r.finishEarlyReturn(ctx, cjm, priorReconciled,
+			corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobSuspended,
+			"CronJob is suspended", &result)
 	}
 
 	scheduleExpr := cjm.Spec.Schedule
+	scheduleOverridden := scheduleExpr != "" && scheduleExpr != cj.Spec.Schedule
 	if scheduleExpr == "" {
 		scheduleExpr = cj.Spec.Schedule
 	}
@@ -158,10 +168,8 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if lerr != nil {
 			r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidTimeZone,
 				fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr))
-			if r.Recorder != nil {
-				r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidTimeZone,
-					fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr))
-			}
+			cjm.Status.MissedRuns = 0
+			cjm.Status.ScheduleDriftSeconds = 0
 			meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 				Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 				Status:             metav1.ConditionUnknown,
@@ -169,16 +177,9 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Message:            "timeZone failed to load",
 				ObservedGeneration: cjm.Generation,
 			})
-			evaluateExecutionHealthy(cjm)
-			evaluateDurationHealthy(cjm)
-			evaluateReady(cjm)
-			res, err := r.patchStatus(ctx, cjm)
-			if err != nil {
-				result = metrics.ResultError
-			} else if res.RequeueAfter > 0 {
-				result = metrics.ResultRequeue
-			}
-			return res, err
+			return r.finishEarlyReturn(ctx, cjm, priorReconciled,
+				corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidTimeZone,
+				fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr), &result)
 		}
 		resolvedTZ = tzName
 	}
@@ -187,10 +188,8 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidSchedule,
 			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
-		if r.Recorder != nil {
-			r.Recorder.Event(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidSchedule,
-				fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
-		}
+		cjm.Status.MissedRuns = 0
+		cjm.Status.ScheduleDriftSeconds = 0
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -198,19 +197,23 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Message:            "schedule expression failed to parse",
 			ObservedGeneration: cjm.Generation,
 		})
-		evaluateExecutionHealthy(cjm)
-		evaluateDurationHealthy(cjm)
-		evaluateReady(cjm)
-		res, err := r.patchStatus(ctx, cjm)
-		if err != nil {
-			result = metrics.ResultError
-		} else if res.RequeueAfter > 0 {
-			result = metrics.ResultRequeue
-		}
-		return res, err
+		return r.finishEarlyReturn(ctx, cjm, priorReconciled,
+			corev1.EventTypeWarning, monitoringv1alpha1.ReasonInvalidSchedule,
+			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err), &result)
 	}
 	cjm.Status.ResolvedSchedule = &scheduleExpr
 	cjm.Status.ResolvedTimeZone = &resolvedTZ
+
+	// Spec §5.6: warn when CronJobMonitor.spec.schedule overrides
+	// CronJob.spec.schedule. Gate on observedGeneration so the warning fires
+	// once per spec change, not once per reconcile (Kubernetes' built-in
+	// event coalescing handles repetition within a 10-minute window, but
+	// we still want to avoid the per-reconcile etcd writes).
+	if scheduleOverridden && r.Recorder != nil && cjm.Status.ObservedGeneration != cjm.Generation {
+		r.Recorder.Eventf(cjm, corev1.EventTypeWarning, monitoringv1alpha1.ReasonScheduleMismatch,
+			"spec.schedule %q differs from CronJob.spec.schedule %q; SLO computed against spec.schedule",
+			scheduleExpr, cj.Spec.Schedule)
+	}
 
 	owned, err := listOwnedJobs(ctx, r.Client, cj)
 	if err != nil {
@@ -230,22 +233,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	cjm.Status.RecentExecutions = history.Merge(cjm.Status.RecentExecutions, incoming, limit)
 
-	cjm.Status.LastSuccessTime = nil
-	cjm.Status.LastFailureTime = nil
-	cjm.Status.LastScheduleTime = nil
-	for i := range cjm.Status.RecentExecutions {
-		rec := &cjm.Status.RecentExecutions[i]
-		if cjm.Status.LastScheduleTime == nil {
-			t := rec.StartTime
-			cjm.Status.LastScheduleTime = &t
-		}
-		if rec.Phase == monitoringv1alpha1.ExecutionPhaseSucceeded && cjm.Status.LastSuccessTime == nil {
-			cjm.Status.LastSuccessTime = pickEndOrStart(rec)
-		}
-		if rec.Phase == monitoringv1alpha1.ExecutionPhaseFailed && cjm.Status.LastFailureTime == nil {
-			cjm.Status.LastFailureTime = pickEndOrStart(rec)
-		}
-	}
+	updateLastObservedTimes(cjm)
 
 	now := r.now()
 	nextExpected := parsed.Next(now)
@@ -291,10 +279,10 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	evaluateReady(cjm)
 	cjm.Status.ObservedGeneration = cjm.Generation
 
-	// Requeue at next expected run + small buffer, or in 1 minute at minimum.
-	requeue := nextExpected.Sub(r.now()) + 5*time.Second
-	if requeue < time.Minute {
-		requeue = time.Minute
+	// Requeue at next expected run + small jitter, with a one-minute floor.
+	requeue := nextExpected.Sub(r.now()) + requeueLeadJitter
+	if requeue < requeueAfterReconcileMin {
+		requeue = requeueAfterReconcileMin
 	}
 	r.emitTransitionEvents(cjm, priorReconciled, priorScheduleHealthy, priorExecutionHealthy, priorDurationHealthy)
 	res, err := r.patchStatus(ctx, cjm)
@@ -307,6 +295,85 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return res, nil
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+// finishEarlyReturn writes the remaining axis conditions, emits a
+// transition-gated Reconciled event, patches status, and returns a 30s
+// requeue. Common tail of the four early-return paths so the spam-gating
+// + requeue policy are in one place.
+func (r *CronJobMonitorReconciler) finishEarlyReturn(
+	ctx context.Context,
+	cjm *monitoringv1alpha1.CronJobMonitor,
+	priorReconciled *metav1.Condition,
+	eventType, eventReason, eventMessage string,
+	result *string,
+) (ctrl.Result, error) {
+	evaluateExecutionHealthy(cjm)
+	evaluateDurationHealthy(cjm)
+	evaluateReady(cjm)
+
+	if r.Recorder != nil && shouldEmitReconciledEvent(priorReconciled, eventReason) {
+		r.Recorder.Event(cjm, eventType, eventReason, eventMessage)
+	}
+
+	res, err := r.patchStatus(ctx, cjm)
+	if err != nil {
+		*result = metrics.ResultError
+		return ctrl.Result{}, err
+	}
+	if res.RequeueAfter > 0 {
+		*result = metrics.ResultRequeue
+		return res, nil
+	}
+	*result = metrics.ResultRequeue
+	return ctrl.Result{RequeueAfter: requeueAfterError}, nil
+}
+
+// shouldEmitReconciledEvent returns true when the new event reason represents
+// a transition rather than a continuation of the previous reconcile state.
+// Eliminates per-reconcile event spam on stuck-state monitors (e.g., CJM
+// pointing at a deleted CronJob would otherwise emit a Warning every 30s).
+func shouldEmitReconciledEvent(prior *metav1.Condition, reason string) bool {
+	if prior == nil {
+		return true
+	}
+	if prior.Status != metav1.ConditionFalse {
+		return true
+	}
+	return prior.Reason != reason
+}
+
+// updateLastObservedTimes populates LastScheduleTime / LastSuccessTime /
+// LastFailureTime from the merged RecentExecutions. Values are
+// monotonically non-decreasing — once we observe a success at time T, we
+// never roll back below T even if T's record falls off the ring buffer
+// later. This prevents `cronguard_last_success_timestamp_seconds` from
+// dropping to 0 when a long failure streak pushes the last success
+// out of history.
+func updateLastObservedTimes(cjm *monitoringv1alpha1.CronJobMonitor) {
+	for i := range cjm.Status.RecentExecutions {
+		rec := &cjm.Status.RecentExecutions[i]
+
+		startCopy := rec.StartTime
+		if cjm.Status.LastScheduleTime == nil || startCopy.After(cjm.Status.LastScheduleTime.Time) {
+			cjm.Status.LastScheduleTime = &startCopy
+		}
+
+		t := pickEndOrStart(rec)
+		if t == nil {
+			continue
+		}
+		switch rec.Phase {
+		case monitoringv1alpha1.ExecutionPhaseSucceeded:
+			if cjm.Status.LastSuccessTime == nil || t.After(cjm.Status.LastSuccessTime.Time) {
+				cjm.Status.LastSuccessTime = t
+			}
+		case monitoringv1alpha1.ExecutionPhaseFailed:
+			if cjm.Status.LastFailureTime == nil || t.After(cjm.Status.LastFailureTime.Time) {
+				cjm.Status.LastFailureTime = t
+			}
+		}
+	}
 }
 
 // pickEndOrStart returns EndTime if set, else StartTime (Failed Jobs may have nil CompletionTime).
@@ -382,7 +449,7 @@ func (r *CronJobMonitorReconciler) emitTransitionEvents(
 func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitoringv1alpha1.CronJobMonitor) (ctrl.Result, error) {
 	if err := r.Status().Update(ctx, cjm); err != nil {
 		if apierrors.IsConflict(err) {
-			return ctrl.Result{RequeueAfter: time.Second}, nil
+			return ctrl.Result{RequeueAfter: requeueAfterConflict}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("status update: %w", err)
 	}
