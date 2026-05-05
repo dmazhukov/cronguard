@@ -22,6 +22,8 @@
       "required": ["repository", "pullPolicy"]
     },
     "imagePullSecrets": {"type": "array", "items": {"type": "object"}},
+    "extraArgs": {"type": "array", "items": {"type": "string"}},
+    "extraEnv": {"type": "array", "items": {"type": "object"}},
     "nameOverride": {"type": "string"},
     "fullnameOverride": {"type": "string"},
     "replicaCount": {"type": "integer", "minimum": 1, "maximum": 10},
@@ -77,6 +79,15 @@
     "nodeSelector": {"type": "object"},
     "tolerations": {"type": "array"},
     "affinity": {"type": "object"},
+    "topologySpreadConstraints": {"type": "array", "items": {"type": "object"}},
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minAvailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]},
+        "maxUnavailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]}
+      }
+    },
     "priorityClassName": {"type": "string"},
     "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1},
     "serviceAccount": {"type": "object"}

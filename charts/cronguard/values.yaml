@@ -6,6 +6,18 @@ image:
 
 imagePullSecrets: []
 
+# Extra command-line args passed to the manager binary. Useful for
+# bumping log verbosity (`--zap-log-level=2`) or pinning a specific
+# leader-election lease name without forking the chart.
+extraArgs: []
+# - --zap-log-level=2
+
+# Extra environment variables added to the manager container. Take a
+# standard list of EnvVar specs (see PodSpec.containers.env).
+extraEnv: []
+# - name: GOMEMLIMIT
+#   value: "200MiB"
+
 nameOverride: ""
 fullnameOverride: ""
 
@@ -93,6 +105,25 @@ securityContext:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# topologySpreadConstraints distributes pods across failure domains
+# (e.g., zones, racks). Mostly relevant when replicaCount > 1; for the
+# default single-replica setup the field is unused.
+topologySpreadConstraints: []
+# - maxSkew: 1
+#   topologyKey: topology.kubernetes.io/zone
+#   whenUnsatisfiable: ScheduleAnyway
+#   labelSelector:
+#     matchLabels:
+#       app.kubernetes.io/name: cronguard
+
+# Opt-in PodDisruptionBudget. Only useful when replicaCount > 1 — for a
+# single replica the budget can't actually shield against voluntary
+# disruption (one pod, no surge under maxSurge: 0). Off by default.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1   # mutually exclusive with minAvailable
 
 priorityClassName: ""
 
