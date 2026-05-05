@@ -80,6 +80,7 @@ func (r *CronJobMonitorReconciler) now() time.Time {
 // Reconcile reads the CronJobMonitor, inspects the referenced CronJob and its
 // Jobs, and updates status conditions and execution history accordingly.
 func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := ctrl.LoggerFrom(ctx)
 	start := r.now()
 	result := metrics.ResultSuccess
 	defer func() {
@@ -90,11 +91,14 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	cjm := &monitoringv1alpha1.CronJobMonitor{}
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
+			log.V(1).Info("CronJobMonitor deleted, nothing to reconcile")
 			return ctrl.Result{}, nil
 		}
 		result = metrics.ResultError
+		log.Error(err, "get CronJobMonitor")
 		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
 	}
+	log.V(1).Info("reconciling", "cronJobRef", cjm.Spec.CronJobRef.Name, "generation", cjm.Generation)
 
 	// Snapshot prior axis statuses for transition-event detection.
 	priorReconciled := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
@@ -108,12 +112,14 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, cjKey, cj); err != nil {
 		if !apierrors.IsNotFound(err) {
 			result = metrics.ResultError
+			log.Error(err, "get CronJob", "cronjob", cjKey.Name)
 			return ctrl.Result{}, fmt.Errorf("get CronJob: %w", err)
 		}
 		cronJobFound = false
 	}
 
 	if !cronJobFound {
+		log.V(1).Info("CronJob not found", "cronjob", cjKey.Name)
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobNotFound,
 			fmt.Sprintf("CronJob %q not found in namespace %q", cjKey.Name, cjKey.Namespace))
 		// CronJob may reappear; reset schedule numerics so the metric reflects
@@ -134,6 +140,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
+		log.V(1).Info("CronJob suspended", "cronjob", cjKey.Name)
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonCronJobSuspended,
 			"referenced CronJob has suspend=true")
 		// Spec §5.6: missed-run counter frozen on suspend (not reset).
@@ -166,6 +173,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		var lerr error
 		loc, lerr = time.LoadLocation(tzName)
 		if lerr != nil {
+			log.V(1).Info("invalid timezone", "tz", tzName, "err", lerr.Error())
 			r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidTimeZone,
 				fmt.Sprintf("timeZone %q invalid: %v", tzName, lerr))
 			cjm.Status.MissedRuns = 0
@@ -186,6 +194,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	parsed, err := schedule.ParseInLocation(scheduleExpr, loc)
 	if err != nil {
+		log.V(1).Info("invalid schedule expression", "schedule", scheduleExpr, "err", err.Error())
 		r.setReconciledFalse(cjm, monitoringv1alpha1.ReasonInvalidSchedule,
 			fmt.Sprintf("schedule %q invalid: %v", scheduleExpr, err))
 		cjm.Status.MissedRuns = 0
@@ -203,6 +212,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	cjm.Status.ResolvedSchedule = &scheduleExpr
 	cjm.Status.ResolvedTimeZone = &resolvedTZ
+	log.V(2).Info("schedule resolved", "schedule", scheduleExpr, "tz", resolvedTZ)
 
 	// Spec §5.6: warn when CronJobMonitor.spec.schedule overrides
 	// CronJob.spec.schedule. Gate on observedGeneration so the warning fires
@@ -218,6 +228,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	owned, err := listOwnedJobs(ctx, r.Client, cj)
 	if err != nil {
 		result = metrics.ResultError
+		log.Error(err, "list owned Jobs", "cronjob", cjKey.Name)
 		return ctrl.Result{}, err
 	}
 	sortJobsNewestFirst(owned)
@@ -288,12 +299,15 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	res, err := r.patchStatus(ctx, cjm)
 	if err != nil {
 		result = metrics.ResultError
+		log.Error(err, "status update")
 		return ctrl.Result{}, err
 	}
 	if res.RequeueAfter > 0 {
 		result = metrics.ResultRequeue
+		log.V(2).Info("requeue after status conflict", "after", res.RequeueAfter)
 		return res, nil
 	}
+	log.V(2).Info("reconciled", "missed", missed, "drift_s", cjm.Status.ScheduleDriftSeconds, "next_expected", nextExpected, "requeue_in", requeue)
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
