@@ -116,6 +116,8 @@ type CronJobMonitorStatus struct {
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
 	// +kubebuilder:validation:MaxItems=10
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
@@ -146,7 +148,11 @@ type CronJobMonitorStatus struct {
 	ScheduleDriftSeconds int32 `json:"scheduleDriftSeconds"`
 
 	// RecentExecutions is a newest-first ring buffer of size HistoryLimit.
+	// Server-side apply treats this as atomic — a writer fully replaces the
+	// list rather than merging. The reconciler is the only writer in
+	// practice.
 	// +optional
+	// +listType=atomic
 	// +kubebuilder:validation:MaxItems=100
 	RecentExecutions []ExecutionRecord `json:"recentExecutions,omitempty"`
 }
