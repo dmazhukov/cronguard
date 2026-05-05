@@ -7,13 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-05
+
+Code-review follow-up. No user-facing breaks; mostly correctness fixes
+in the reconciler's error paths plus polish across the chart, image,
+and CI surfaces.
+
+### Fixed (correctness)
+
+- Reconciler early-return paths (CronJob not found / suspended / invalid
+  schedule / invalid timezone) now reset `MissedRuns` and
+  `ScheduleDriftSeconds` to 0 so the matching metrics no longer emit
+  pre-error values (suspend exempted per Phase 1 spec §5.6 — the
+  missed-run counter is intentionally frozen across suspend).
+- `LastScheduleTime` / `LastSuccessTime` / `LastFailureTime` are now
+  monotonically non-decreasing. Previously, when the only successful
+  record rotated out of the bounded `RecentExecutions` ring buffer,
+  `LastSuccessTime` dropped to nil and `cronguard_last_success_timestamp_seconds`
+  reported 0 — confusing step-down that didn't match reality.
+- Spec §5.6 missing warning event implemented: when `CronJobMonitor.spec.schedule`
+  differs from `CronJob.spec.schedule`, the controller emits a `ScheduleMismatch`
+  warning, gated on `observedGeneration` so it fires once per spec change
+  rather than every reconcile.
+- Spec §5.6 missing 30s requeue implemented: all four early-return paths
+  now `RequeueAfter: 30s` rather than relying on RateLimited backoff.
+- Per-reconcile event spam on stuck states fixed. Early-return event
+  emission gated via transition detection (`shouldEmitReconciledEvent`);
+  events fire only when prior state was nil or different reason. CRL
+  with a CronJob that's been deleted no longer produces ~60 etcd writes
+  per hour.
+
+### Fixed (other)
+
+- Standalone `config/prometheus/rules.yaml` `CronGuardOperatorDown` alert
+  switched from `up{job=~"...controller-manager-metrics.*"} == 0` (which
+  silently never-fired for non-default scrape configs) to
+  `absent(cronguard_build_info) == 1`. Independent of the user's
+  Prometheus job-naming.
+- Removed `config/prometheus/monitor.yaml` and `monitor_tls_patch.yaml`
+  scaffold ServiceMonitor — its `scheme: https` did not match the
+  HTTP-only metrics server in `cmd/main.go`. Nothing referenced it.
+- Runbook `docs/runbooks/not-ready.md` corrected: the `Reconciled=False`
+  reason names listed (`cronJobNotFound`, `parseScheduleError`,
+  `statusUpdateConflict`) didn't match the controller's actual reason
+  constants (`CronJobNotFound`, `InvalidSchedule`, `InvalidTimeZone`,
+  `CronJobSuspended`). Rewrote with correct values and added
+  ResourceVersion-conflict triage in terms of metric rate, not a
+  fictional reason.
+
+### Added
+
+- Reconciler structured logging via logr at three levels:
+  - V(0): error paths
+  - V(1): per-reconcile entry, early-return reasons (set
+    `--zap-log-level=1` to enable)
+  - V(2): schedule resolution detail, requeue choice, post-reconcile
+    summary (set `--zap-log-level=2`)
+- Helm chart: `extraArgs`, `extraEnv`, `topologySpreadConstraints`,
+  opt-in `podDisruptionBudget` (refuses single-replica install with a
+  templating-time `fail`).
+- Chart `templates/NOTES.txt` enhanced with runbook pointer, CRD-upgrade
+  `kubectl apply` URL, and replicaCount > 1 metric-doubling caveat.
+- Image `org.opencontainers.image.*` labels (source, description,
+  licenses, version, revision, created). `image.source` is what GHCR
+  uses to link the image to the source repo; supply-chain tools
+  consume the rest.
+- CI `trivy` image-scan step (HIGH/CRITICAL severity, fixed CVEs only).
+- CI `manifests-clean` job — fails the PR if `make manifests generate`
+  produces a diff against checked-in CRD/RBAC/deepcopy outputs.
+- CI `chart-lint` job — `helm lint` plus `kubeconform -strict` against
+  default and full-opt-in chart renders. Phase 2 spec §6 acceptance
+  criterion was previously not wired up.
+- API `+listType=map +listMapKey=type` markers on `Conditions` and
+  `+listType=atomic` on `RecentExecutions`. Server-side apply now
+  merges per-condition rather than overwriting the whole list.
+
 ### Changed
 
-- Quickstart pins in `README.md`, `charts/cronguard/README.md`, and `docs/distribution.md` bumped from `0.2.2` to `0.2.6`. The pins had been stuck at `0.2.2` despite four releases since (`0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`). README Roadmap updated to mention shipped timezone-aware schedules (`spec.timeZone`) under v0.2.x.
+- Helm chart selector labels hardcoded to `app.kubernetes.io/name: cronguard`
+  (literal). Previously templated by `nameOverride` — a re-render with a
+  different override would have produced an immutable-selector `helm upgrade`
+  failure. Cosmetic label customization stays available via the broader
+  `cronguard.labels` helper.
+- Helm chart bumped to v0.2.7. AppVersion to 0.2.7.
+- Quickstart pins in `README.md`, `charts/cronguard/README.md`, and
+  `docs/distribution.md` bumped from `0.2.2` to `0.2.6`. The pins had
+  been stuck at `0.2.2` despite four releases since. README Roadmap
+  updated to mention shipped timezone-aware schedules (`spec.timeZone`)
+  under v0.2.x.
 
 ### CI
 
-- `release.yml` gained a `bump-docs` job that runs after `chart` publishes successfully and opens a PR via `peter-evans/create-pull-request@v7` with the version pins bumped to `${tag#v}` across README, chart README, and `docs/distribution.md`. Idempotent (no-op if pins are already current). Closes the v0.2.2 → v0.2.6 doc-drift class of bug. Caveat: PR opened by `GITHUB_TOKEN` does not auto-trigger `ci.yml` (Actions loop-prevention); merge via close+reopen or admin bypass.
+- `release.yml` gained a `bump-docs` job that runs after `chart` publishes
+  successfully and opens a PR via `peter-evans/create-pull-request@v8`
+  with the version pins bumped to `${tag#v}` across README, chart README,
+  and `docs/distribution.md`. Idempotent (no-op if pins are already
+  current). Closes the v0.2.2 → v0.2.6 doc-drift class of bug.
+
+### Removed
+
+- Dead kubebuilder Go-e2e suite (`test/e2e/e2e_test.go`,
+  `e2e_suite_test.go`, the entire `test/utils/` package). Was never
+  invoked by CI; would not have worked against the actual chart install
+  in any case (kustomize-style names, HTTPS port that the binary doesn't
+  open). Real e2e via `test/e2e/run-e2e.sh` is unchanged.
+- `make test-e2e`, `setup-test-e2e`, `cleanup-test-e2e` Makefile targets,
+  and `KIND` / `KIND_CLUSTER` vars (only used by the removed targets).
+- `dependabot.yml` controller-runtime `< 0.24.0` ignore rule. v0.24.0
+  shipped upstream (PR #53), so the kubernetes group can bump it via
+  the normal weekly cycle.
 
 ## [0.2.6] - 2026-04-27
 
