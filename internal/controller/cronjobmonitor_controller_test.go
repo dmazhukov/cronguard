@@ -227,7 +227,7 @@ var _ = Describe("CronJobMonitor controller", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "bad-1-mon", Namespace: namespace},
 			Spec: monitoringv1alpha1.CronJobMonitorSpec{
 				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "bad-1"},
-				Schedule:               "not a cron",
+				Schedule:               "99 25 32 13 8",
 				MaxConsecutiveFailures: 2,
 				AlertAfterMissedRuns:   2,
 				GracePeriodSeconds:     60,
@@ -592,6 +592,88 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(sched.Status).To(Equal(metav1.ConditionUnknown))
 			g.Expect(sched.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidTimeZone))
 		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("rejects spec.timeZone that's not IANA-shaped via CEL", func() {
+		cj := makeCronJob(namespace, "tz-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "tz-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "tz-cel-bad"},
+				TimeZone:               "est", // lowercase, not IANA shape
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("timeZone must be"))
+	})
+
+	It("rejects spec.schedule that's not 5-field cron via CEL", func() {
+		cj := makeCronJob(namespace, "sched-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "sched-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "sched-cel-bad"},
+				Schedule:               "definitely-not-a-cron",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("schedule must be"))
+	})
+
+	It("rejects gracePeriodSeconds >= 86400 via CEL", func() {
+		cj := makeCronJob(namespace, "grace-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "grace-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "grace-cel-bad"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     90000, // > 86400
+				HistoryLimit:           10,
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("gracePeriodSeconds must be"))
+	})
+
+	It("rejects alertAfterMissedRuns > historyLimit via CEL", func() {
+		cj := makeCronJob(namespace, "missed-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "missed-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "missed-cel-bad"},
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   20,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10, // < AlertAfterMissedRuns
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("alertAfterMissedRuns must be"))
 	})
 })
 
