@@ -11,4 +11,6 @@ resources:
 - cronjobmonitor_admin_role.yaml
 - cronjobmonitor_editor_role.yaml
 - cronjobmonitor_viewer_role.yaml
+- self_role.yaml
+- self_role_binding.yaml
 

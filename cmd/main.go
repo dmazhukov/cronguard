@@ -146,8 +146,7 @@ func main() {
 	stopCtx := ctrl.SetupSignalHandler()
 	go func() {
 		if err := labeler.SetRole(stopCtx, leader.RoleStandby); err != nil {
-			setupLog.Info("initial standby label set failed (will retry on election)",
-				"err", err.Error())
+			setupLog.Error(err, "initial standby label set failed; subsequent leader-election label will retry independently")
 		}
 		select {
 		case <-mgr.Elected():
