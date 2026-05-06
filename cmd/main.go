@@ -30,6 +30,7 @@ import (
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 	"github.com/dmazhukov/cronguard/internal/controller"
+	"github.com/dmazhukov/cronguard/internal/leader"
 	"github.com/dmazhukov/cronguard/internal/metrics"
 )
 
@@ -128,10 +129,41 @@ func main() {
 		os.Exit(1)
 	}
 
+	// HA metrics dedup: when this pod wins/loses leader election, label its
+	// own pod accordingly so the chart's ServiceMonitor (selector role=leader)
+	// scrapes only the active replica. controller-runtime serves
+	// mgr.Elected() as a closed channel once leader, and the manager exits
+	// once it stops being leader (no graceful demotion path exists for
+	// long-running managers; we still set standby on startup so a quick
+	// election loss before mgr.Start() returns leaves a sensible label).
+	podName := os.Getenv("POD_NAME")
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	labeler := &leader.Labeler{
+		Client:       mgr.GetClient(),
+		PodName:      podName,
+		PodNamespace: podNamespace,
+	}
+	stopCtx := ctrl.SetupSignalHandler()
+	go func() {
+		if err := labeler.SetRole(stopCtx, leader.RoleStandby); err != nil {
+			setupLog.Info("initial standby label set failed (will retry on election)",
+				"err", err.Error())
+		}
+		select {
+		case <-mgr.Elected():
+			if err := labeler.SetRole(stopCtx, leader.RoleLeader); err != nil {
+				setupLog.Error(err, "label pod as leader")
+			} else {
+				setupLog.Info("labelled pod as leader", "pod", podName)
+			}
+		case <-stopCtx.Done():
+		}
+	}()
+
 	setupLog.Info("starting manager",
 		"version", version, "commit", commit, "buildDate", buildDate,
 		"metricsAddr", metricsAddr, "probeAddr", probeAddr, "leaderElection", enableLeaderElection)
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopCtx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
