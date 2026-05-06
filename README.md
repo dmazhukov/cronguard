@@ -136,14 +136,9 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) �
 
 ## Roadmap
 
+**Shipped (v0.3.x):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping. See [CHANGELOG.md](CHANGELOG.md) for details.
+
 **Shipped (v0.2.x):** operator core, CRD with timezone-aware schedules (`spec.timeZone` with fallback to `CronJob.spec.timeZone`), envtest suite, raw `kubectl apply` manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
-
-**v0.3 — production hardening (planned):**
-
-- **CEL admission validation** — IANA timezone format, basic schedule shape, cross-field constraints (e.g., `gracePeriodSeconds < 86400`) caught at `kubectl apply` time. Today's `Reconciled=False, reason=InvalidSchedule` becomes a one-step apiserver rejection. No webhook server, uses `+kubebuilder:validation:XValidation` markers on the CRD itself.
-- **Burn-rate SLO alerts** — Google SRE Workbook style multi-window alerts on `cronguard_missed_runs` and `cronguard_consecutive_failures`, replacing the bare `condition == 0` for-5m gates. Lower false-positive rate, more actionable signal.
-- **HA metrics deduplication** — when `replicaCount > 1`, only the elected leader's pod is scraped. Pods get a `cronguard.io/role: leader|standby` label updated by leader-election watch; ServiceMonitor selects `role: leader`. Today's HA install double-counts every gauge.
-- **Drift annotation re-stamping** — `RecentExecutions[].DriftSeconds` no longer drops when a Job transitions Running → Succeeded (the `history.Merge` replace path discarded it).
 
 **v0.4 — fleet-level SLO (planned):**
 

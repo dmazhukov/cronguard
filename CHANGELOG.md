@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-06
+
+Documentation fast-follow after v0.3.0. No code or chart logic changes; closes the docs-drift issues found in the v0.3.0 final review.
+
+### Changed
+
+- README Roadmap moved v0.3 from "(planned)" to "Shipped (v0.3.x)" listing the four features that landed.
+- Runbook index (`docs/runbooks/README.md`) lists the new `burn-rate-missed-runs.md` runbook (added in v0.3.0 but missed from the index).
+- Chart README values table documents the four `prometheusRule.thresholds.missedRunsBurnFast.*` and four `prometheusRule.thresholds.missedRunsBurnSlow.*` keys.
+- Chart README and `docs/distribution.md` HA sections now mention the leader-only scrape behavior (ServiceMonitor `relabelings: keep regex: leader` when `replicaCount > 1`).
+- Chart README "five default alerts" updated to "seven" — v0.3.0 added the two burn-rate alerts.
+
 ## [0.3.0] - 2026-04-30
 
 Production hardening release. Closes the four gaps surfaced after v0.2.x reached production-grade quality and exited the post-review polish wave (v0.2.7).
