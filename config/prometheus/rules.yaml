@@ -55,6 +55,39 @@ spec:
             description: "Ready condition is False for CronJob {{ $labels.cronjob }}: {{ $labels.reason }}. One or more SLO checks are failing for at least 10 minutes."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/not-ready.md"
 
+        - alert: CronGuardMissedRunsBurnFast
+          # Two-window fast burn: > 1 missed/min over 5min AND > 6 missed/hour
+          # over 1h — catches sudden onset of missed runs without false positives
+          # from a single isolated miss.
+          expr: |
+            (rate(cronguard_missed_runs_total[5m]) * 60) > 1
+            and
+            (rate(cronguard_missed_runs_total[1h]) * 3600) > 6
+          for: 2m
+          labels:
+            severity: warning
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} burning fast"
+            description: "Schedule SLO error budget consumed at >14× normal rate (≥1 missed/min over 5min and ≥6 missed/hour over 1h). Investigate the scheduler or controller-manager."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
+
+        - alert: CronGuardMissedRunsBurnSlow
+          # Slow burn: sustained low-rate missed runs over 1h-6h windows.
+          # Signal-only, severity info — for trend awareness, not paging.
+          expr: |
+            (rate(cronguard_missed_runs_total[1h]) * 3600) > 1
+            and
+            (rate(cronguard_missed_runs_total[6h]) * 21600) > 3
+          for: 15m
+          labels:
+            severity: info
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ $labels.namespace }}/{{ $labels.name }} burning slow"
+            description: "Schedule SLO error budget consumed at >2× normal rate (≥1 missed/hour over 1h and ≥3 missed/6h over 6h). Watch the trend; consider tightening the schedule or the workload's runtime."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
+
     - name: cronguard.platform
       interval: 30s
       rules:

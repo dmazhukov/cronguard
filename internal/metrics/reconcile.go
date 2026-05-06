@@ -30,8 +30,21 @@ var ReconcileDurationSeconds = prometheus.NewHistogramVec(
 	[]string{"namespace", "name"},
 )
 
+// MissedRunsTotal counts each newly-detected missed run as a strictly
+// monotonic counter. The reconciler increments it by the delta between the
+// current MissedRunsSince() result and the previously-emitted value (tracked
+// per-monitor in memory). Used by burn-rate alerts; the existing
+// cronguard_missed_runs gauge stays for at-a-glance state.
+var MissedRunsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cronguard_missed_runs_total",
+		Help: "Total number of missed runs observed since process start",
+	},
+	[]string{"namespace", "name", "cronjob"},
+)
+
 // MustRegister registers the reconcile counters with the given registry.
 // Safe to call once during manager bootstrap.
 func MustRegister(reg prometheus.Registerer) {
-	reg.MustRegister(ReconcileTotal, ReconcileDurationSeconds)
+	reg.MustRegister(ReconcileTotal, ReconcileDurationSeconds, MissedRunsTotal)
 }

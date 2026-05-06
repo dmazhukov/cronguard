@@ -81,6 +81,16 @@ prometheusRule:
     operatorDown:
       for: 2m
       severity: critical
+    missedRunsBurnFast:
+      fastRate: 1     # > N missed runs/min over 5m
+      slowRate: 6     # AND > N missed runs/hour over 1h
+      for: 2m
+      severity: warning
+    missedRunsBurnSlow:
+      fastRate: 1     # > N missed runs/hour over 1h
+      slowRate: 3     # AND > N missed runs over 6h
+      for: 15m
+      severity: info
 
 # CRD installation. Helm 3 installs crds/ on install only — never on upgrade.
 crds:

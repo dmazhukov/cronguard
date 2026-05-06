@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
+	"github.com/dmazhukov/cronguard/internal/metrics"
 )
 
 var _ = Describe("CronJobMonitor controller", func() {
@@ -305,6 +307,61 @@ var _ = Describe("CronJobMonitor controller", func() {
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonScheduleMissed))
 		}, 15*time.Second, 250*time.Millisecond).Should(Succeed())
+	})
+
+	It("increments cronguard_missed_runs_total when MissedRuns grows", func() {
+		// Same shape as the AlertAfterMissedRuns test: every-minute schedule,
+		// fake clock advanced by 5 minutes -> MissedRunsSince returns ~5.
+		cj := makeCronJob(namespace, "missed-counter-1", "* * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		baseTime := time.Now().Add(2 * time.Hour).Truncate(time.Minute)
+		testClock.SetTime(baseTime)
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "missed-counter-1-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "missed-counter-1"},
+				MaxConsecutiveFailures: 5,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     0,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+
+		// Wait for steady state.
+		Eventually(func(g Gomega) {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "missed-counter-1-mon", Namespace: namespace}, got)).To(Succeed())
+			cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			g.Expect(cond).NotTo(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
+
+		// Advance clock by 5 minutes so MissedRunsSince returns ~5.
+		testClock.SetTime(baseTime.Add(5 * time.Minute))
+
+		// Force reconcile via annotation.
+		Eventually(func() error {
+			got := &monitoringv1alpha1.CronJobMonitor{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "missed-counter-1-mon", Namespace: namespace}, got); err != nil {
+				return err
+			}
+			if got.Annotations == nil {
+				got.Annotations = map[string]string{}
+			}
+			got.Annotations["cronguard.io/test-tick"] = "1"
+			return k8sClient.Update(ctx, got)
+		}, 5*time.Second, 250*time.Millisecond).Should(Succeed())
+
+		// Counter must have observed at least 2 missed runs.
+		Eventually(func(g Gomega) {
+			val := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(namespace, "missed-counter-1-mon", "missed-counter-1"))
+			g.Expect(val).To(BeNumerically(">=", 2))
+		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
 
 	It("populates LastFailureTime even when Job CompletionTime is nil", func() {

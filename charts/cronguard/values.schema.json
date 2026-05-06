@@ -62,7 +62,25 @@
             "consecutiveFailures": {"$ref": "#/$defs/thresholdSpec"},
             "durationExceeded": {"$ref": "#/$defs/thresholdSpec"},
             "notReady": {"$ref": "#/$defs/thresholdSpec"},
-            "operatorDown": {"$ref": "#/$defs/thresholdSpec"}
+            "operatorDown": {"$ref": "#/$defs/thresholdSpec"},
+            "missedRunsBurnFast": {
+              "type": "object",
+              "properties": {
+                "fastRate": {"type": "number", "minimum": 0},
+                "slowRate": {"type": "number", "minimum": 0},
+                "for": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "warning", "critical"]}
+              }
+            },
+            "missedRunsBurnSlow": {
+              "type": "object",
+              "properties": {
+                "fastRate": {"type": "number", "minimum": 0},
+                "slowRate": {"type": "number", "minimum": 0},
+                "for": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "warning", "critical"]}
+              }
+            }
           }
         }
       }
