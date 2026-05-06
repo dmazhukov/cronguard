@@ -58,6 +58,34 @@ spec:
             description: "Ready condition is False for CronJob {{ "{{ $labels.cronjob }}" }}: {{ "{{ $labels.reason }}" }}."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/not-ready.md"
 
+        - alert: CronGuardMissedRunsBurnFast
+          expr: |
+            (rate(cronguard_missed_runs_total[5m]) * 60) > {{ .Values.prometheusRule.thresholds.missedRunsBurnFast.fastRate }}
+            and
+            (rate(cronguard_missed_runs_total[1h]) * 3600) > {{ .Values.prometheusRule.thresholds.missedRunsBurnFast.slowRate }}
+          for: {{ .Values.prometheusRule.thresholds.missedRunsBurnFast.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.missedRunsBurnFast.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}" }}/{{ "{{ $labels.name }}" }} burning fast"
+            description: "Schedule SLO error budget consumed at >14× normal rate. Investigate scheduler or controller-manager."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
+
+        - alert: CronGuardMissedRunsBurnSlow
+          expr: |
+            (rate(cronguard_missed_runs_total[1h]) * 3600) > {{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.fastRate }}
+            and
+            (rate(cronguard_missed_runs_total[6h]) * 21600) > {{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.slowRate }}
+          for: {{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.for }}
+          labels:
+            severity: {{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.severity }}
+            component: cronguard
+          annotations:
+            summary: "CronJobMonitor {{ "{{ $labels.namespace }}" }}/{{ "{{ $labels.name }}" }} burning slow"
+            description: "Schedule SLO error budget consumed at >2× normal rate. Watch the trend."
+            runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
+
     - name: cronguard.platform
       interval: {{ .Values.prometheusRule.interval }}
       rules:

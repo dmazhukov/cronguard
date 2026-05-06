@@ -60,6 +60,13 @@ type CronJobMonitorReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	Clock    clock.PassiveClock
+
+	// lastMissed tracks the previously-observed MissedRunsSince result per
+	// monitor. The cronguard_missed_runs_total counter increments by the
+	// positive delta between current and last; resets to 0 on a successful
+	// run (which sets MissedRunsSince to 0). Map mutated only from Reconcile,
+	// which controller-runtime serializes per-key; no lock needed.
+	lastMissed map[types.NamespacedName]int32
 }
 
 // now returns the current time via the injected Clock, or wall clock.
@@ -92,6 +99,7 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.V(1).Info("CronJobMonitor deleted, nothing to reconcile")
+			delete(r.lastMissed, req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
 		result = metrics.ResultError
@@ -275,6 +283,17 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		lastStart = cjm.CreationTimestamp.Time
 	}
 	missed := int32(parsed.MissedRunsSince(lastStart, now, time.Duration(cjm.Spec.GracePeriodSeconds)*time.Second)) //nolint:gosec // G115: missed-run count is bounded by reconcile cadence and fits in int32
+
+	// Counter for burn-rate alerts: increment by the positive delta only.
+	// MissedRunsSince resets to 0 when the operator observes a fresh
+	// successful run (lastStart advances), so a decrease just means
+	// "the missed-run streak ended" — not an event to count.
+	prev := r.lastMissed[req.NamespacedName]
+	if missed > prev {
+		metrics.MissedRunsTotal.WithLabelValues(req.Namespace, req.Name, cj.Name).
+			Add(float64(missed - prev))
+	}
+	r.lastMissed[req.NamespacedName] = missed
 
 	evaluateScheduleHealthy(cjm, missed)
 	evaluateExecutionHealthy(cjm)
@@ -518,6 +537,9 @@ func (r *CronJobMonitorReconciler) mapJobToMonitors(ctx context.Context, obj cli
 // SetupWithManager registers the reconciler with the manager, watching
 // CronJobMonitor objects and enqueueing requests for related Job events.
 func (r *CronJobMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.lastMissed == nil {
+		r.lastMissed = make(map[types.NamespacedName]int32)
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&monitoringv1alpha1.CronJobMonitor{}).
 		Watches(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(r.mapJobToMonitors)).
