@@ -151,3 +151,49 @@ func TestRingKeepsExistingWhenIncomingIsEarlier(t *testing.T) {
 		t.Fatalf("got[0].Phase = %q, want Succeeded (existing kept)", got[0].Phase)
 	}
 }
+
+// TestMergePreservesDriftAnnotations checks that when an incoming record
+// supersedes an existing one with the same JobName, ExpectedStartTime and
+// DriftSeconds carry over from the old record if the new record has them
+// nil. This matches the v0.3 design: drift is computed once when the Job
+// transitions from Pending → Running and must survive the Running →
+// Succeeded/Failed transition.
+func TestMergePreservesDriftAnnotations(t *testing.T) {
+	start := metav1.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC)
+	end := metav1.Date(2026, 5, 6, 12, 30, 0, 0, time.UTC)
+	expected := metav1.Date(2026, 5, 6, 11, 59, 0, 0, time.UTC)
+	driftSec := int32(60)
+
+	existing := []monitoringv1alpha1.ExecutionRecord{
+		{
+			JobName:           "settle-1",
+			StartTime:         start,
+			Phase:             monitoringv1alpha1.ExecutionPhaseRunning,
+			ExpectedStartTime: &expected,
+			DriftSeconds:      &driftSec,
+		},
+	}
+	incoming := []monitoringv1alpha1.ExecutionRecord{
+		{
+			JobName:   "settle-1",
+			StartTime: start,
+			EndTime:   &end,
+			Phase:     monitoringv1alpha1.ExecutionPhaseSucceeded,
+		},
+	}
+
+	merged := history.Merge(existing, incoming, 10)
+	if len(merged) != 1 {
+		t.Fatalf("Merge returned %d records, want 1", len(merged))
+	}
+	rec := merged[0]
+	if rec.Phase != monitoringv1alpha1.ExecutionPhaseSucceeded {
+		t.Errorf("Phase = %q, want Succeeded", rec.Phase)
+	}
+	if rec.ExpectedStartTime == nil || !rec.ExpectedStartTime.Equal(&expected) {
+		t.Errorf("ExpectedStartTime = %v, want %v", rec.ExpectedStartTime, expected)
+	}
+	if rec.DriftSeconds == nil || *rec.DriftSeconds != driftSec {
+		t.Errorf("DriftSeconds = %v, want %d", rec.DriftSeconds, driftSec)
+	}
+}

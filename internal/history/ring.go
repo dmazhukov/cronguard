@@ -20,9 +20,23 @@ func Merge(existing, incoming []monitoringv1alpha1.ExecutionRecord, limit int) [
 	}
 	for _, r := range incoming {
 		prev, ok := byName[r.JobName]
-		if !ok || shouldReplace(prev, r) {
+		if !ok {
 			byName[r.JobName] = r
+			continue
 		}
+		if !shouldReplace(prev, r) {
+			continue
+		}
+		// Carry forward drift annotations: jobToRecord constructs records
+		// from terminal Job state and doesn't know the originally expected
+		// start time. The Running snapshot computed it once; preserve.
+		if r.ExpectedStartTime == nil && prev.ExpectedStartTime != nil {
+			r.ExpectedStartTime = prev.ExpectedStartTime
+		}
+		if r.DriftSeconds == nil && prev.DriftSeconds != nil {
+			r.DriftSeconds = prev.DriftSeconds
+		}
+		byName[r.JobName] = r
 	}
 
 	out := make([]monitoringv1alpha1.ExecutionRecord, 0, len(byName))
