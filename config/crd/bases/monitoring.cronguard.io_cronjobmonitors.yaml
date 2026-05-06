@@ -124,6 +124,12 @@ spec:
                 maxLength: 128
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: schedule must be a 5-field cron expression, an @descriptor
+                    (@hourly/@daily/@weekly/@monthly/@yearly), or a CRON_TZ=/TZ= prefixed
+                    expression
+                  rule: self.startsWith('@') || self.startsWith('CRON_TZ=') || self.startsWith('TZ=')
+                    || self.matches('^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+$')
               timeZone:
                 description: |-
                   TimeZone is the IANA time-zone name (e.g. "America/New_York", "Europe/Moscow")
@@ -133,9 +139,22 @@ spec:
                 maxLength: 64
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: timeZone must be 'UTC' or an IANA name like 'America/New_York'
+                    or 'Europe/Moscow'
+                  rule: self == 'UTC' || self.matches('^[A-Z][A-Za-z_]+(/[A-Z][A-Za-z_+-]+)+$')
             required:
             - cronJobRef
             type: object
+            x-kubernetes-validations:
+            - message: gracePeriodSeconds must be less than 86400 (1 day)
+              rule: self.gracePeriodSeconds < 86400
+            - message: alertAfterMissedRuns must be ≤ historyLimit (history must hold
+                the missed-run threshold)
+              rule: self.alertAfterMissedRuns <= self.historyLimit
+            - message: maxConsecutiveFailures must be ≤ historyLimit (history must
+                hold the consecutive-failures threshold)
+              rule: self.maxConsecutiveFailures <= self.historyLimit
           status:
             description: CronJobMonitorStatus captures the observed SLO state of the
               monitored CronJob.
