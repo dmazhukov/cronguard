@@ -45,7 +45,7 @@ type CronJobMonitorSpec struct {
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=128
-	// +kubebuilder:validation:XValidation:rule="self.startsWith('@') || self.startsWith('CRON_TZ=') || self.startsWith('TZ=') || self.matches('^\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+$')",message="schedule must be a 5-field cron expression, an @descriptor (@hourly/@daily/@weekly/@monthly/@yearly), or a CRON_TZ=/TZ= prefixed expression"
+	// +kubebuilder:validation:XValidation:rule="self.startsWith('@') || self.startsWith('CRON_TZ=') || self.startsWith('TZ=') || self.matches('^\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+$')",message="schedule must be 5 whitespace-separated tokens, an @descriptor (@hourly/@daily/@weekly/@monthly/@yearly), or a CRON_TZ=/TZ= prefixed expression (range/value validity is checked by the reconciler)"
 	Schedule string `json:"schedule,omitempty"`
 
 	// TimeZone is the IANA time-zone name (e.g. "America/New_York", "Europe/Moscow")
@@ -55,7 +55,7 @@ type CronJobMonitorSpec struct {
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:XValidation:rule="self == 'UTC' || self.matches('^[A-Z][A-Za-z_]+(/[A-Z][A-Za-z_+-]+)+$')",message="timeZone must be 'UTC' or an IANA name like 'America/New_York' or 'Europe/Moscow'"
+	// +kubebuilder:validation:XValidation:rule="self == 'UTC' || self.matches('^[A-Z][A-Za-z0-9_+-]*(/[A-Z][A-Za-z0-9_+-]*)*$')",message="timeZone must be 'UTC' or an IANA name (single-segment like 'GMT' or multi-segment like 'America/New_York'); first character of each segment must be uppercase"
 	TimeZone string `json:"timeZone,omitempty"`
 
 	// MaxDurationSeconds is the SLO for a single Job's wall-clock duration.
