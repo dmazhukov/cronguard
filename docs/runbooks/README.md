@@ -9,5 +9,6 @@ Runbooks linked from the default `PrometheusRule` annotations. Each runbook cove
 - [duration-exceeded](duration-exceeded.md) — `CronGuardDurationExceeded`
 - [not-ready](not-ready.md) — `CronGuardNotReady`
 - [operator-down](operator-down.md) — `CronGuardOperatorDown`
+- [burn-rate-missed-runs](burn-rate-missed-runs.md) — `CronGuardMissedRunsBurnFast` / `CronGuardMissedRunsBurnSlow`
 
 Each runbook has the same shape: Symptom, Quick triage, Common causes, Remediation, Appendix.

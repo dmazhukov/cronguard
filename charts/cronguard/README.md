@@ -66,7 +66,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `serviceMonitor.interval` | string | `30s` | Scrape interval. |
 | `serviceMonitor.scrapeTimeout` | string | `10s` | Scrape timeout. |
 | `serviceMonitor.honorLabels` | boolean | `false` | Pass through `honorLabels` to scrape config. |
-| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with five default CronGuard alerts. |
+| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (5 SLO axis + Operator Down + 2 burn-rate). |
 | `prometheusRule.namespace` | string | `""` | Namespace for the `PrometheusRule`. Empty defaults to release namespace. |
 | `prometheusRule.labels` | object | `{}` | Extra labels on the `PrometheusRule`. |
 | `prometheusRule.interval` | string | `30s` | Rule evaluation interval. |
@@ -80,6 +80,14 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `prometheusRule.thresholds.notReady.severity` | string | `critical` | Severity label for `CronGuardNotReady`. |
 | `prometheusRule.thresholds.operatorDown.for` | string | `2m` | `for:` duration for `CronGuardOperatorDown`. |
 | `prometheusRule.thresholds.operatorDown.severity` | string | `critical` | Severity label for `CronGuardOperatorDown`. |
+| `prometheusRule.thresholds.missedRunsBurnFast.fastRate` | number | `1` | Fast-window burn rate (missed runs/min over 5m). |
+| `prometheusRule.thresholds.missedRunsBurnFast.slowRate` | number | `6` | Fast-window second condition (missed runs/hour over 1h). |
+| `prometheusRule.thresholds.missedRunsBurnFast.for` | string | `2m` | `for:` duration for `CronGuardMissedRunsBurnFast`. |
+| `prometheusRule.thresholds.missedRunsBurnFast.severity` | string | `warning` | Severity label. |
+| `prometheusRule.thresholds.missedRunsBurnSlow.fastRate` | number | `1` | Slow-window burn rate (missed runs/hour over 1h). |
+| `prometheusRule.thresholds.missedRunsBurnSlow.slowRate` | number | `3` | Slow-window second condition (missed runs over 6h). |
+| `prometheusRule.thresholds.missedRunsBurnSlow.for` | string | `15m` | `for:` duration for `CronGuardMissedRunsBurnSlow`. |
+| `prometheusRule.thresholds.missedRunsBurnSlow.severity` | string | `info` | Severity label. |
 | `crds.install` | boolean | `true` | Install the `CronJobMonitor` CRD on `helm install`. |
 | `podAnnotations` | object | `{}` | Annotations applied to operator pods. |
 | `podLabels` | object | `{}` | Extra labels applied to operator pods. |
@@ -126,6 +134,8 @@ helm install cronguard ./charts/cronguard \
 
 Two replicas with leader election (default-on). Only one is active at a time; failover is automatic.
 
+With `replicaCount > 1` AND `serviceMonitor.enabled=true`, the chart's ServiceMonitor adds a `relabelings: keep regex: leader` rule keyed on the `cronguard.io/role` pod label. Only the elected leader pod is scraped — without this, both pods would serve `/metrics` with identical labels and Prometheus would double-count every gauge. The standby pod is patched with `cronguard.io/role: standby` and remains visible in the Service's endpoints (for kubelet liveness/readiness traffic) but excluded from scrape.
+
 ### ServiceMonitor enabled
 
 ```bash
@@ -139,7 +149,7 @@ The `release: prometheus` label is what the kube-prometheus-stack chart selects 
 
 ## PrometheusRule (alerts)
 
-Set `prometheusRule.enabled: true` to ship five default alerts as a `PrometheusRule` resource. Requires prometheus-operator CRDs in the cluster.
+Set `prometheusRule.enabled: true` to ship seven default alerts as a `PrometheusRule` resource. Requires prometheus-operator CRDs in the cluster.
 
 ```yaml
 prometheusRule:
