@@ -127,9 +127,9 @@ spec:
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
-                - message: schedule must be a 5-field cron expression, an @descriptor
+                - message: schedule must be 5 whitespace-separated tokens, an @descriptor
                     (@hourly/@daily/@weekly/@monthly/@yearly), or a CRON_TZ=/TZ= prefixed
-                    expression
+                    expression (range/value validity is checked by the reconciler)
                   rule: self.startsWith('@') || self.startsWith('CRON_TZ=') || self.startsWith('TZ=')
                     || self.matches('^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+$')
               timeZone:
@@ -142,9 +142,10 @@ spec:
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
-                - message: timeZone must be 'UTC' or an IANA name like 'America/New_York'
-                    or 'Europe/Moscow'
-                  rule: self == 'UTC' || self.matches('^[A-Z][A-Za-z_]+(/[A-Z][A-Za-z_+-]+)+$')
+                - message: timeZone must be 'UTC' or an IANA name (single-segment
+                    like 'GMT' or multi-segment like 'America/New_York'); first character
+                    of each segment must be uppercase
+                  rule: self == 'UTC' || self.matches('^[A-Z][A-Za-z0-9_+-]*(/[A-Z][A-Za-z0-9_+-]*)*$')
             required:
             - cronJobRef
             type: object
