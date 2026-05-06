@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-30
+
+Production hardening release. Closes the four gaps surfaced after v0.2.x reached production-grade quality and exited the post-review polish wave (v0.2.7).
+
+### Added
+
+- **CEL admission validation** on `CronJobMonitorSpec` via `+kubebuilder:validation:XValidation` markers. Apiserver-side rejects `spec.timeZone` typos (`est`, `usa/new_york`), shapes `spec.schedule` (must be 5-token whitespace-separated, `@descriptor`, or `CRON_TZ=`/`TZ=` prefix), and enforces cross-field invariants (`gracePeriodSeconds < 86400`, `alertAfterMissedRuns ≤ historyLimit`, `maxConsecutiveFailures ≤ historyLimit`). No webhook server, no cert-manager dependency.
+- **Burn-rate SLO alerts** on `cronguard_missed_runs_total` (new counter; existing `cronguard_missed_runs` gauge stays). Two alerts following the SRE Workbook two-window pattern: `CronGuardMissedRunsBurnFast` (5m+1h, ~14× burn, warning) and `CronGuardMissedRunsBurnSlow` (1h+6h, ~2× burn, info). Chart values for thresholds; new runbook at `docs/runbooks/burn-rate-missed-runs.md`. ConsecutiveFailures burn-rate intentionally deferred to v0.4 — different ratio semantics.
+- **HA metrics deduplication.** New `internal/leader` package + `cmd/main.go` integration that flips `cronguard.io/role` label on the local pod between `leader` and `standby` based on `mgr.Elected()`. Chart's `ServiceMonitor` adds a `relabelings: keep regex: leader` rule when `replicaCount > 1`. Result: with HA install, Prometheus scrapes only the active replica; previously both pods served `/metrics` with identical labels and every gauge was doubled.
+
+### Fixed
+
+- **Drift annotation re-stamping.** `internal/history.Merge` now carries `ExpectedStartTime` and `DriftSeconds` from a replaced record when the incoming record has them nil. Fixes the case where a Job transitioning Running → Succeeded/Failed lost its drift annotation in `RecentExecutions[]`. The aggregate `cronguard_schedule_drift_seconds` gauge was unaffected.
+- **CEL `timeZone` regex relaxed** to accept all valid IANA shapes (single-segment names like `GMT`, `MST`, `Universal`; offsets like `Etc/GMT+3`, `Etc/GMT-7`). The original regex over-rejected these even though `time.LoadLocation` accepts them.
+- **`cronguard_missed_runs_total` counter map thread-safety.** Added `sync.Mutex` around the `lastMissed` tracking map; previously safe only because `MaxConcurrentReconciles` defaults to 1, but now correct under any concurrency setting.
+
+### CI
+
+- New required RBAC marker: `pods/{get,patch}` on the operator's own namespace (chart: namespaced Role + RoleBinding; kustomize: `config/rbac/self_role.yaml` + `config/rbac/self_role_binding.yaml`). Used by the new HA Labeler in `cmd/main.go`. Limited to the operator's own namespace via Role+RoleBinding (chart) or namespaced Role (kustomize).
+
 ## [0.2.7] - 2026-05-05
 
 Code-review follow-up. No user-facing breaks; mostly correctness fixes
