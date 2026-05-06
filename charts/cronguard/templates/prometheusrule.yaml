@@ -69,7 +69,7 @@ spec:
             component: cronguard
           annotations:
             summary: "CronJobMonitor {{ "{{ $labels.namespace }}" }}/{{ "{{ $labels.name }}" }} burning fast"
-            description: "Schedule SLO error budget consumed at >14× normal rate. Investigate scheduler or controller-manager."
+            description: "Schedule SLO error budget consumed (≥{{ .Values.prometheusRule.thresholds.missedRunsBurnFast.fastRate }} missed/min over 5min and ≥{{ .Values.prometheusRule.thresholds.missedRunsBurnFast.slowRate }} missed/hour over 1h). Investigate scheduler or controller-manager."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
 
         - alert: CronGuardMissedRunsBurnSlow
@@ -83,7 +83,7 @@ spec:
             component: cronguard
           annotations:
             summary: "CronJobMonitor {{ "{{ $labels.namespace }}" }}/{{ "{{ $labels.name }}" }} burning slow"
-            description: "Schedule SLO error budget consumed at >2× normal rate. Watch the trend."
+            description: "Schedule SLO error budget consumed slowly (≥{{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.fastRate }} missed/hour over 1h and ≥{{ .Values.prometheusRule.thresholds.missedRunsBurnSlow.slowRate }} missed/6h over 6h). Watch the trend."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/burn-rate-missed-runs.md"
 
     - name: cronguard.platform

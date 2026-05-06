@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -64,9 +65,12 @@ type CronJobMonitorReconciler struct {
 	// lastMissed tracks the previously-observed MissedRunsSince result per
 	// monitor. The cronguard_missed_runs_total counter increments by the
 	// positive delta between current and last; resets to 0 on a successful
-	// run (which sets MissedRunsSince to 0). Map mutated only from Reconcile,
-	// which controller-runtime serializes per-key; no lock needed.
-	lastMissed map[types.NamespacedName]int32
+	// run (which sets MissedRunsSince to 0). Guarded by lastMissedMu so
+	// the controller stays correct under any MaxConcurrentReconciles value
+	// (controller-runtime workqueue dedupes per-key, but different keys
+	// reconcile in parallel goroutines).
+	lastMissed   map[types.NamespacedName]int32
+	lastMissedMu sync.Mutex
 }
 
 // now returns the current time via the injected Clock, or wall clock.
@@ -99,7 +103,9 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.V(1).Info("CronJobMonitor deleted, nothing to reconcile")
+			r.lastMissedMu.Lock()
 			delete(r.lastMissed, req.NamespacedName)
+			r.lastMissedMu.Unlock()
 			return ctrl.Result{}, nil
 		}
 		result = metrics.ResultError
@@ -288,12 +294,14 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// MissedRunsSince resets to 0 when the operator observes a fresh
 	// successful run (lastStart advances), so a decrease just means
 	// "the missed-run streak ended" — not an event to count.
+	r.lastMissedMu.Lock()
 	prev := r.lastMissed[req.NamespacedName]
+	r.lastMissed[req.NamespacedName] = missed
+	r.lastMissedMu.Unlock()
 	if missed > prev {
 		metrics.MissedRunsTotal.WithLabelValues(req.Namespace, req.Name, cj.Name).
 			Add(float64(missed - prev))
 	}
-	r.lastMissed[req.NamespacedName] = missed
 
 	evaluateScheduleHealthy(cjm, missed)
 	evaluateExecutionHealthy(cjm)
