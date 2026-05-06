@@ -11,6 +11,8 @@ These two alerts use the [Google SRE Workbook](https://sre.google/workbook/alert
 | Fast | 5 min | 1 h | ≈ 14× (consumes 1 month budget in ~2h) |
 | Slow | 1 h | 6 h | ≈ 2-3× (consumes 1 month budget in ~5d) |
 
+> The burn-rate factors above assume a ~99% SLO target over a 30-day window. If your CronJob's SLO target differs, tune the chart values `prometheusRule.thresholds.missedRunsBurnFast.{fastRate,slowRate}` accordingly. The shape of the alert (two-window, fast+slow) stays right; only the threshold numbers move.
+
 User-visible impact: the underlying CronJob is missing scheduled fires — either kube-controller-manager isn't firing the slot, or `concurrencyPolicy: Forbid` is blocking it because the previous run is still alive.
 
 ## Quick triage (~3 min)
