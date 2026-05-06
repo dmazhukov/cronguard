@@ -22,4 +22,13 @@ spec:
       interval: {{ .Values.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
       honorLabels: {{ .Values.serviceMonitor.honorLabels }}
+      {{- if gt (int .Values.replicaCount) 1 }}
+      relabelings:
+        # HA metrics dedup: skip standby replicas. The Labeler in cmd/main.go
+        # writes cronguard.io/role on each pod; only leader=true is scraped,
+        # otherwise Prometheus double-counts every cronguard_* gauge.
+        - sourceLabels: [__meta_kubernetes_pod_label_cronguard_io_role]
+          regex: leader
+          action: keep
+      {{- end }}
 {{- end }}

@@ -13,4 +13,37 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
-{{- end }}
+{{ end }}
+{{- /*
+Namespace-scoped Role for self-actions (currently: patch own pod label
+for leader-elected metrics dedup). Kept namespace-scoped on principle —
+the operator never patches resources outside its own namespace.
+*/ -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "cronguard.fullname" . }}-self
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cronguard.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "cronguard.fullname" . }}-self
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cronguard.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "cronguard.fullname" . }}-self
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "cronguard.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
