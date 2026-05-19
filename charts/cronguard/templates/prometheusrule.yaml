@@ -90,13 +90,21 @@ spec:
       interval: {{ .Values.prometheusRule.interval }}
       rules:
         - alert: CronGuardOperatorDown
-          expr: up{namespace="{{ .Release.Namespace }}",service="{{ include "cronguard.fullname" . }}-metrics"} == 0
+          # `absent()` over a metric the operator always emits when running.
+          # When CronGuard is scaled to 0 / crashlooping / unscheduled, its
+          # Service has no endpoints and Prometheus *drops* the `up{...}` series
+          # entirely (rather than holding it at 0). A naive `up{...} == 0`
+          # matcher matches no series in that state and silently never fires —
+          # confirmed by 7-day soak (2026-05-15: 3-min replicas=0 produced
+          # zero alert firings under the previous expr). `absent()` handles
+          # both crashloop (series at 0) and scale-to-0 (series gone) uniformly.
+          expr: absent(cronguard_build_info{namespace="{{ .Release.Namespace }}"}) == 1
           for: {{ .Values.prometheusRule.thresholds.operatorDown.for }}
           labels:
             severity: {{ .Values.prometheusRule.thresholds.operatorDown.severity }}
             component: cronguard
           annotations:
             summary: "CronGuard operator is down"
-            description: "Prometheus has not been able to scrape CronGuard /metrics for at least {{ .Values.prometheusRule.thresholds.operatorDown.for }}."
+            description: "Prometheus has not seen any cronguard_build_info series from namespace {{ .Release.Namespace }} for at least {{ .Values.prometheusRule.thresholds.operatorDown.for }}. The operator is crashlooping, unscheduled, scaled to 0, or unreachable."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/operator-down.md"
 {{- end }}

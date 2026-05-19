@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`CronGuardOperatorDown` alert now actually fires** when the operator is scaled to 0 / unscheduled / has no endpoint. Previous expression `up{namespace=...,service=...-metrics} == 0` matched no series in those states — when the Service has no endpoints, Prometheus drops the `up{...}` series entirely rather than holding it at 0, so the `== 0` comparison evaluated against nothing and never produced a firing condition. Reproduced reliably during a multi-day soak: a 3-minute deliberate `kubectl scale --replicas=0` window produced zero alert firings under the previous expression. New expression `absent(cronguard_build_info{namespace=...}) == 1` (matching the standalone `config/prometheus/rules.yaml` form already in repo) handles both crashloop (series at 0) and target-absent (series gone) cases uniformly. Verified by replaying both expressions against a live Prometheus at the historical scale-to-0 window: new expr returns `value=1` across all 3 minutes (would enter pending immediately, fire after `for: 2m`); old expr returns 0 series for the entire window. Affects chart only; the standalone manifest was already correct.
+
 ## [0.3.1] - 2026-05-06
 
 Documentation fast-follow after v0.3.0. No code or chart logic changes; closes the docs-drift issues found in the v0.3.0 final review.
