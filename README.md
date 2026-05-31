@@ -27,7 +27,7 @@ CronGuard replaces that with a declarative SLO per CronJob.
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.3.1 \
+  --version 0.3.2 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -36,14 +36,14 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.3.1 \
+helm install cronguard cronguard/cronguard --version 0.3.2 \
   --namespace cronguard-system --create-namespace
 ```
 
 ### Raw manifests
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.3.1/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.3.2/install.yaml
 ```
 
 Apply a sample monitor:
