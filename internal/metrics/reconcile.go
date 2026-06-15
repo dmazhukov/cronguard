@@ -35,12 +35,18 @@ var ReconcileDurationSeconds = prometheus.NewHistogramVec(
 // current MissedRunsSince() result and the previously-emitted value (tracked
 // per-monitor in memory). Used by burn-rate alerts; the existing
 // cronguard_missed_runs gauge stays for at-a-glance state.
+//
+// Labelled by (namespace, name) — the CronJobMonitor's own identity — not the
+// referenced cronjob. This lets the deletion path clean the series up without
+// needing to remember the cronjob name after the CR is gone (see M3), and
+// matches the label set of the other reconcile counters. Burn-rate alerts
+// aggregate rate() without the cronjob label, so this is transparent to them.
 var MissedRunsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "cronguard_missed_runs_total",
 		Help: "Total number of missed runs observed since process start",
 	},
-	[]string{"namespace", "name", "cronjob"},
+	[]string{"namespace", "name"},
 )
 
 // MustRegister registers the reconcile counters with the given registry.
