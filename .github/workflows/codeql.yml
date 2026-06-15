@@ -23,6 +23,7 @@ env:
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         language: [go]
