@@ -697,6 +697,49 @@ var _ = Describe("CronJobMonitor controller", func() {
 		Expect(err.Error()).To(ContainSubstring("schedule must be"))
 	})
 
+	// F14 — C1 regression: @every schedules are relative and produce
+	// meaningless drift/missed-run counts, so admission must reject them.
+	It("rejects @every schedules via CEL", func() {
+		cj := makeCronJob(namespace, "every-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "every-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "every-cel-bad"},
+				Schedule:               "@every 30s",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("@every schedules are not supported"))
+	})
+
+	It("accepts a fixed @descriptor (@daily) via CEL", func() {
+		cj := makeCronJob(namespace, "desc-cel-ok", "0 0 * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "desc-cel-ok-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "desc-cel-ok"},
+				Schedule:               "@daily",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+	})
+
 	It("rejects gracePeriodSeconds >= 86400 via CEL", func() {
 		cj := makeCronJob(namespace, "grace-cel-bad", "0 * * * *")
 		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
