@@ -49,11 +49,16 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `image.pullPolicy` | string | `IfNotPresent` | Image pull policy. One of `Always`, `IfNotPresent`, `Never`. |
 | `image.tag` | string | `""` | Image tag. Empty string defaults to `.Chart.AppVersion`. |
 | `imagePullSecrets` | list | `[]` | Secret names for pulling private images. |
+| `extraArgs` | list | `[]` | Extra command-line args appended to the manager binary (e.g. `--zap-log-level=2`). |
+| `extraEnv` | list | `[]` | Extra environment variables added to the manager container (standard `EnvVar` specs). |
 | `nameOverride` | string | `""` | Override the chart name component of resource names. |
 | `fullnameOverride` | string | `""` | Override the entire resource name. |
 | `replicaCount` | integer | `1` | Operator replicas. Set to `2` for HA — leader election keeps one reconciler active. |
 | `namespace` | string | `""` | Restrict the operator to a single namespace. Empty means cluster-wide watch. |
 | `leaderElection.enabled` | boolean | `true` | Toggle leader election. |
+| `serviceAccount.create` | boolean | `true` | Create the operator ServiceAccount. |
+| `serviceAccount.name` | string | `""` | ServiceAccount name. Empty defaults to the chart fullname. |
+| `serviceAccount.annotations` | object | `{}` | Annotations on the ServiceAccount (e.g. IRSA / Workload Identity). |
 | `resources.requests.cpu` | string | `10m` | Container CPU request. |
 | `resources.requests.memory` | string | `64Mi` | Container memory request. |
 | `resources.limits.cpu` | string | `500m` | Container CPU limit. |
@@ -66,7 +71,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `serviceMonitor.interval` | string | `30s` | Scrape interval. |
 | `serviceMonitor.scrapeTimeout` | string | `10s` | Scrape timeout. |
 | `serviceMonitor.honorLabels` | boolean | `false` | Pass through `honorLabels` to scrape config. |
-| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (5 SLO axis + Operator Down + 2 burn-rate). |
+| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (4 SLO-axis + 2 burn-rate + Operator Down). |
 | `prometheusRule.namespace` | string | `""` | Namespace for the `PrometheusRule`. Empty defaults to release namespace. |
 | `prometheusRule.labels` | object | `{}` | Extra labels on the `PrometheusRule`. |
 | `prometheusRule.interval` | string | `30s` | Rule evaluation interval. |
@@ -96,6 +101,10 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `nodeSelector` | object | `{}` | Node selector. |
 | `tolerations` | list | `[]` | Tolerations. |
 | `affinity` | object | `{}` | Affinity rules. |
+| `topologySpreadConstraints` | list | `[]` | Spread pods across failure domains. Relevant when `replicaCount > 1`. |
+| `podDisruptionBudget.enabled` | boolean | `false` | Render a `PodDisruptionBudget`. Only meaningful when `replicaCount > 1`. |
+| `podDisruptionBudget.minAvailable` | integer | `1` | Minimum available pods (mutually exclusive with `maxUnavailable`). |
+| `podDisruptionBudget.maxUnavailable` | integer | _unset_ | Maximum unavailable pods (mutually exclusive with `minAvailable`). |
 | `priorityClassName` | string | `""` | Pod priority class. |
 | `terminationGracePeriodSeconds` | integer | `30` | Pod termination grace period. |
 
