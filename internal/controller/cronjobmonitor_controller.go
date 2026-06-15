@@ -94,7 +94,18 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	log := ctrl.LoggerFrom(ctx)
 	start := r.now()
 	result := metrics.ResultSuccess
+	deleted := false
 	defer func() {
+		if deleted {
+			// CR is gone: drop this key's series instead of re-creating them.
+			// The increment below would otherwise resurrect exactly the series
+			// the NotFound branch is trying to clean up (M3).
+			metrics.ReconcileDurationSeconds.DeleteLabelValues(req.Namespace, req.Name)
+			for _, res := range []string{metrics.ResultSuccess, metrics.ResultError, metrics.ResultRequeue} {
+				metrics.ReconcileTotal.DeleteLabelValues(req.Namespace, req.Name, res)
+			}
+			return
+		}
 		metrics.ReconcileTotal.WithLabelValues(req.Namespace, req.Name, result).Inc()
 		metrics.ReconcileDurationSeconds.WithLabelValues(req.Namespace, req.Name).Observe(r.now().Sub(start).Seconds())
 	}()
@@ -103,9 +114,17 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, req.NamespacedName, cjm); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.V(1).Info("CronJobMonitor deleted, nothing to reconcile")
+			deleted = true
 			r.lastMissedMu.Lock()
 			delete(r.lastMissed, req.NamespacedName)
 			r.lastMissedMu.Unlock()
+			// Drop the per-monitor counter series so a churny namespace (CI,
+			// preview envs) doesn't grow registry cardinality without bound.
+			// The gauge collector is list-driven and self-cleans; these
+			// registered vecs are not (M3). ReconcileTotal/Duration are
+			// cleaned by the deferred handler (deleted=true) so its own
+			// increment can't resurrect them.
+			metrics.MissedRunsTotal.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		result = metrics.ResultError
@@ -294,12 +313,23 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// MissedRunsSince resets to 0 when the operator observes a fresh
 	// successful run (lastStart advances), so a decrease just means
 	// "the missed-run streak ended" — not an event to count.
+	//
+	// C2: lastMissed is in-memory and starts empty on every process start and
+	// leader failover. Status.MissedRuns is persisted, so on the first sight of
+	// a key we seed the baseline from it rather than from an implicit 0 —
+	// otherwise the post-failover delta would be the entire persisted backlog,
+	// firing a spurious BurnFast (or, after a counter reset, masking a real
+	// burn). Seeding makes the first post-failover delta 0; only genuinely new
+	// misses observed by this process increment the counter.
 	r.lastMissedMu.Lock()
-	prev := r.lastMissed[req.NamespacedName]
+	prev, seen := r.lastMissed[req.NamespacedName]
+	if !seen {
+		prev = cjm.Status.MissedRuns
+	}
 	r.lastMissed[req.NamespacedName] = missed
 	r.lastMissedMu.Unlock()
 	if missed > prev {
-		metrics.MissedRunsTotal.WithLabelValues(req.Namespace, req.Name, cj.Name).
+		metrics.MissedRunsTotal.WithLabelValues(req.Namespace, req.Name).
 			Add(float64(missed - prev))
 	}
 
