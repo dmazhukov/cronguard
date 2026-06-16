@@ -61,9 +61,9 @@ helm install cronguard cronguard/cronguard \
 # HA — two replicas, leader election picks the active one
 helm install cronguard cronguard/cronguard \
   --set replicaCount=2
+```
 
 With `replicaCount > 1` AND `serviceMonitor.enabled=true`, the chart's ServiceMonitor adds a `relabelings: keep regex: leader` rule keyed on the `cronguard.io/role` pod label. Only the elected leader pod is scraped — without this, both pods would serve `/metrics` with identical labels and Prometheus would double-count every gauge. The standby pod is patched with `cronguard.io/role: standby` and remains visible in the Service's endpoints (for kubelet liveness/readiness traffic) but excluded from scrape.
-```
 
 ## CRD upgrades
 

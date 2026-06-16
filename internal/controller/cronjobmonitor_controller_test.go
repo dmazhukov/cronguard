@@ -20,6 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	clocktesting "k8s.io/utils/clock/testing"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
 	"github.com/dmazhukov/cronguard/internal/metrics"
@@ -359,7 +363,7 @@ var _ = Describe("CronJobMonitor controller", func() {
 
 		// Counter must have observed at least 2 missed runs.
 		Eventually(func(g Gomega) {
-			val := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(namespace, "missed-counter-1-mon", "missed-counter-1"))
+			val := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(namespace, "missed-counter-1-mon"))
 			g.Expect(val).To(BeNumerically(">=", 2))
 		}, 10*time.Second, 250*time.Millisecond).Should(Succeed())
 	})
@@ -693,6 +697,49 @@ var _ = Describe("CronJobMonitor controller", func() {
 		Expect(err.Error()).To(ContainSubstring("schedule must be"))
 	})
 
+	// F14 — C1 regression: @every schedules are relative and produce
+	// meaningless drift/missed-run counts, so admission must reject them.
+	It("rejects @every schedules via CEL", func() {
+		cj := makeCronJob(namespace, "every-cel-bad", "0 * * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "every-cel-bad-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "every-cel-bad"},
+				Schedule:               "@every 30s",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		err := k8sClient.Create(ctx, cjm)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("@every schedules are not supported"))
+	})
+
+	It("accepts a fixed @descriptor (@daily) via CEL", func() {
+		cj := makeCronJob(namespace, "desc-cel-ok", "0 0 * * *")
+		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cj)).To(Succeed()) })
+
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{Name: "desc-cel-ok-mon", Namespace: namespace},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:             monitoringv1alpha1.CronJobReference{Name: "desc-cel-ok"},
+				Schedule:               "@daily",
+				MaxConsecutiveFailures: 2,
+				AlertAfterMissedRuns:   2,
+				GracePeriodSeconds:     60,
+				HistoryLimit:           10,
+			},
+		}
+		Expect(k8sClient.Create(ctx, cjm)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, cjm)).To(Succeed()) })
+	})
+
 	It("rejects gracePeriodSeconds >= 86400 via CEL", func() {
 		cj := makeCronJob(namespace, "grace-cel-bad", "0 * * * *")
 		Expect(k8sClient.Create(ctx, cj)).To(Succeed())
@@ -795,6 +842,98 @@ var _ = Describe("CronJobMonitor controller", func() {
 })
 
 // findCondition is a test helper.
+// These specs drive a standalone reconciler against a fake client so the
+// burn-counter baseline and series-cleanup behaviour can be asserted
+// deterministically, in isolation from the envtest manager running in the
+// background of the suite above.
+var _ = Describe("burn-counter hardening (standalone)", func() {
+	const ns = "cg-hardening"
+
+	// newReconciler builds a reconciler over a fake client seeded with objs,
+	// with an empty lastMissed map (simulating a fresh process / leader).
+	newReconciler := func(clk *clocktesting.FakePassiveClock, objs ...client.Object) *CronJobMonitorReconciler {
+		fc := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(objs...).
+			WithStatusSubresource(&monitoringv1alpha1.CronJobMonitor{}).
+			Build()
+		return &CronJobMonitorReconciler{
+			Client:     fc,
+			Scheme:     scheme,
+			Clock:      clk,
+			lastMissed: make(map[types.NamespacedName]int32),
+		}
+	}
+
+	// F16 — C2 regression: a fresh leader must not emit the persisted backlog
+	// as a single spurious burst into cronguard_missed_runs_total.
+	It("does not burst the missed-runs counter on failover (seeds baseline from status)", func() {
+		base := time.Now().Add(3 * time.Hour).Truncate(time.Minute)
+		clk := clocktesting.NewFakePassiveClock(base)
+
+		cj := makeCronJob(ns, "settle", "* * * * *")
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "settle-mon", Namespace: ns,
+				CreationTimestamp: metav1.NewTime(base.Add(-1 * time.Hour)),
+			},
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{
+				CronJobRef:           monitoringv1alpha1.CronJobReference{Name: "settle"},
+				AlertAfterMissedRuns: 2,
+				GracePeriodSeconds:   0,
+				HistoryLimit:         10,
+			},
+			// Persisted backlog from a previous process: 5 missed runs already
+			// recorded, last schedule observed 5 minutes ago.
+			Status: monitoringv1alpha1.CronJobMonitorStatus{
+				MissedRuns:       5,
+				LastScheduleTime: &metav1.Time{Time: base.Add(-5 * time.Minute)},
+			},
+		}
+		r := newReconciler(clk, cj, cjm)
+		key := types.NamespacedName{Name: "settle-mon", Namespace: ns}
+
+		// Counter starts at 0 for this fresh process.
+		before := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "settle-mon"))
+
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		// The reconcile recomputes missed≈5 against the persisted lastStart, but
+		// because the baseline was seeded from Status.MissedRuns (5), the delta
+		// is 0 — the counter must NOT have jumped by the backlog.
+		after := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "settle-mon"))
+		Expect(after-before).To(BeNumerically("==", 0),
+			"counter must not emit the persisted backlog as a spurious burst")
+
+		// A genuinely new miss observed by THIS process should still count.
+		clk.SetTime(base.Add(2 * time.Minute))
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		grew := testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "settle-mon"))
+		Expect(grew).To(BeNumerically(">", after), "new misses after failover must still increment")
+	})
+
+	// F17 — M3 regression: deleting a CronJobMonitor must drop its counter
+	// series so registry cardinality doesn't grow without bound.
+	It("deletes per-monitor counter series when the CR is gone", func() {
+		// Seed the series with a non-zero value, then reconcile a now-absent CR.
+		metrics.MissedRunsTotal.WithLabelValues(ns, "gone-mon").Add(3)
+		Expect(testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "gone-mon"))).
+			To(BeNumerically("==", 3))
+
+		r := newReconciler(clocktesting.NewFakePassiveClock(time.Now())) // empty client: CR not found
+		_, err := r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: "gone-mon", Namespace: ns},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// After the NotFound branch, the series must be removed (reads back as 0).
+		Expect(testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "gone-mon"))).
+			To(BeNumerically("==", 0), "counter series must be deleted on CR removal")
+	})
+})
+
 func findCondition(conds []metav1.Condition, t string) *metav1.Condition {
 	for i := range conds {
 		if conds[i].Type == t {

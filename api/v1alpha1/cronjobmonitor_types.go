@@ -45,6 +45,7 @@ type CronJobMonitorSpec struct {
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('@every')",message="@every schedules are not supported: they are relative (not aligned to a wall-clock grid), so schedule drift and missed-run counts are meaningless. Use a 5-field cron expression or a fixed @descriptor (@hourly/@daily/@weekly/@monthly/@yearly)."
 	// +kubebuilder:validation:XValidation:rule="self.startsWith('@') || self.startsWith('CRON_TZ=') || self.startsWith('TZ=') || self.matches('^\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+\\\\s+\\\\S+$')",message="schedule must be 5 whitespace-separated tokens, an @descriptor (@hourly/@daily/@weekly/@monthly/@yearly), or a CRON_TZ=/TZ= prefixed expression (range/value validity is checked by the reconciler)"
 	Schedule string `json:"schedule,omitempty"`
 

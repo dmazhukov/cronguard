@@ -91,7 +91,7 @@ Or open the [.cast file](docs/cast/install.cast) directly.
 
 ## Metrics
 
-All metrics are labelled `{namespace, name, cronjob}`.
+The per-CronJob gauge family is labelled `{namespace, name, cronjob}` (`name` is the CronJobMonitor; `cronjob` is the referenced CronJob):
 
 | Metric | Type | Meaning |
 |---|---|---|
@@ -104,7 +104,16 @@ All metrics are labelled `{namespace, name, cronjob}`.
 | `cronguard_missed_runs` | gauge | Consecutive missed runs |
 | `cronguard_schedule_drift_seconds` | gauge | Drift of most recent run |
 | `cronguard_last_duration_seconds` | gauge | Duration of last completed run |
-| `cronguard_condition` | gauge | `1`/`0`/`-1` per condition type/reason |
+| `cronguard_condition` | gauge | `1`/`0`/`-1` per condition type/reason (extra labels `type`, `reason`) |
+
+Counters and operator self-metrics (different label sets):
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `cronguard_missed_runs_total` | counter | `namespace, name` | Cumulative missed runs observed; drives the burn-rate alerts |
+| `cronguard_reconcile_total` | counter | `namespace, name, result` | Reconcile invocations per outcome (`success`/`error`/`requeue`) |
+| `cronguard_reconcile_duration_seconds` | histogram | `namespace, name` | Reconcile latency |
+| `cronguard_build_info` | gauge | `version, commit, build_date` | Always `1`; carries build metadata (also the operator-up signal) |
 
 Example alerts (PromQL):
 
@@ -118,7 +127,7 @@ cronguard_condition{type="ExecutionHealthy"} == 0
 
 ## Dashboards
 
-A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) — six panels covering all CronGuard metrics. See [the dashboards README](config/grafana/README.md) for import instructions.
+A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) — six panels covering the core CronGuard metrics. See [the dashboards README](config/grafana/README.md) for import instructions.
 
 ## Architecture
 

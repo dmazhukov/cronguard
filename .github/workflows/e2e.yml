@@ -34,13 +34,13 @@ jobs:
         uses: helm/kind-action@v1
         with:
           install_only: true
-          version: v0.24.0
-          node_image: kindest/node:v1.31.0
+          version: v0.27.0
+          node_image: kindest/node:v1.33.1
 
       - name: Install helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.16.2
+          version: v3.18.4
 
       - name: Run e2e
         env:

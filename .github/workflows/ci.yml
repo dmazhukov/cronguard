@@ -19,6 +19,7 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -31,6 +32,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -42,13 +44,14 @@ jobs:
       - name: Run tests
         run: make test
       - name: Upload coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: cover.out
           fail_ci_if_error: false
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -80,6 +83,7 @@ jobs:
 
   vuln:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -93,6 +97,7 @@ jobs:
 
   prometheus-rules:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - name: Install promtool
@@ -112,6 +117,7 @@ jobs:
   # then ships as a broken release. Standard kubebuilder pattern.
   manifests-clean:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -133,6 +139,7 @@ jobs:
   # users.
   chart-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: azure/setup-helm@v5

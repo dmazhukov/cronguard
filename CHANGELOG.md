@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Burn-rate counter no longer bursts on leader failover / restart (C2).** `cronguard_missed_runs_total` is incremented by the in-memory delta `missed - lastMissed[key]`, and `lastMissed` starts empty on every process start and leader-election handover. A new leader read the persisted `Status.MissedRuns` (e.g. 5) against a baseline of 0 and added the **entire backlog in one step**, tripping `CronGuardMissedRunsBurnFast` spuriously (and, across the counter reset + leader-only scrape swap, potentially masking a genuine burn for a scrape window). The reconciler now seeds `lastMissed[key]` from the persisted `Status.MissedRuns` the first time it sees a key, so the post-failover delta is 0 and only genuinely new misses observed by the current process increment the counter. Regression test added (failover baseline).
+- **Per-monitor counter series no longer leak on CronJobMonitor deletion (M3).** The NotFound reconcile path cleaned the in-memory `lastMissed` entry but never removed the `cronguard_missed_runs_total`, `cronguard_reconcile_total`, or `cronguard_reconcile_duration_seconds` series, so churny namespaces (CI, preview envs) grew registry cardinality without bound until process restart. The deletion path now deletes those label series. As part of this, `cronguard_missed_runs_total` is now labelled `(namespace, name)` (the monitor's own identity) instead of `(namespace, name, cronjob)` — this lets the series be cleaned up after the CR is gone and matches the other reconcile counters. Burn-rate alerts aggregate `rate()` without the `cronjob` label, so they are unaffected.
+
+### Changed
+
+- **`@every` schedules are now rejected at admission (C1).** `spec.schedule` values starting with `@every` (e.g. `@every 30s`) previously passed CEL validation but produced meaningless results: robfig/cron parses them into a *relative* schedule with no wall-clock grid, so `Prev()` returns the query time itself (drift always ≈ 0) and missed-run counts are nonsensical. A new CEL rule rejects `@every` with an explanatory message. **Breaking** for any existing monitor using an `@every` schedule — switch to a 5-field cron expression or a fixed `@descriptor` (`@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly`). Proper relative-schedule support is deferred to a later release.
+
 ## [0.3.2] - 2026-05-31
 
 ### Fixed

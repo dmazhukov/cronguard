@@ -40,4 +40,5 @@ kubeconfig
 
 # Claude Code working artifacts (kept local only)
 docs/superpowers/
+.omc/
 .claude/settings.local.json
