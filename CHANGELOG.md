@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-06-16
+
 ### Fixed
 
 - **Burn-rate counter no longer bursts on leader failover / restart (C2).** `cronguard_missed_runs_total` is incremented by the in-memory delta `missed - lastMissed[key]`, and `lastMissed` starts empty on every process start and leader-election handover. A new leader read the persisted `Status.MissedRuns` (e.g. 5) against a baseline of 0 and added the **entire backlog in one step**, tripping `CronGuardMissedRunsBurnFast` spuriously (and, across the counter reset + leader-only scrape swap, potentially masking a genuine burn for a scrape window). The reconciler now seeds `lastMissed[key]` from the persisted `Status.MissedRuns` the first time it sees a key, so the post-failover delta is 0 and only genuinely new misses observed by the current process increment the counter. Regression test added (failover baseline).
