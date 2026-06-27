@@ -9,7 +9,7 @@ The operator watches CronJobs and Jobs in the cluster (or a single namespace) an
 ### Via OCI registry (Helm 3.8+)
 
 ```bash
-helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.3.2 \
+helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.3.3 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -18,7 +18,7 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard --version 0.3.2 
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.3.2 \
+helm install cronguard cronguard/cronguard --version 0.3.3 \
   --namespace cronguard-system --create-namespace
 ```
 
