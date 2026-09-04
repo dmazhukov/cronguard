@@ -4,9 +4,16 @@ resources:
 - role_binding.yaml
 - leader_election_role.yaml
 - leader_election_role_binding.yaml
-# kube-rbac-proxy / metrics-auth pattern. Comment out to disable.
-- metrics_auth_role.yaml
-- metrics_auth_role_binding.yaml
+# metrics_auth_role/_binding are NOT included. They grant cluster-wide
+# create on tokenreviews and subjectaccessreviews for an authn/authz filter
+# on the metrics endpoint — and cmd/main.go installs no such filter
+# (metricsserver.Options carries only BindAddress). Shipping the grant for a
+# feature that does not exist hands the operator a privilege it cannot use.
+# Re-add both files in the same commit that wires up SecureServing and
+# FilterProvider, not before.
+#
+# metrics_reader_role is kept: it grants nothing to the operator, it is the
+# role a cluster admin binds a scraper to.
 - metrics_reader_role.yaml
 - cronjobmonitor_admin_role.yaml
 - cronjobmonitor_editor_role.yaml

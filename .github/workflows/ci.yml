@@ -8,8 +8,14 @@ on:
   # A repository can go quiet for weeks; a vulnerability disclosure cannot.
   # govulncheck only ever ran on push and PR, so a CVE published against an
   # existing dependency stayed invisible until the next commit — which is
-  # exactly how GO-2026-5970 sat undetected in x/text for ten weeks. Re-run
-  # the suite weekly so main is continuously verified, not verified-as-of-last-push.
+  # exactly how GO-2026-5970 sat undetected in x/text for ten weeks.
+  #
+  # Note the limit of this remedy: GitHub disables scheduled workflows in a
+  # public repository after 60 days with no repository activity, and mails the
+  # admin when it does. So this covers a quiet period of up to 60 days, not an
+  # unbounded one — which is why workflow_dispatch is here too, as the manual
+  # re-arm. Closing the gap properly needs a trigger that does not depend on
+  # repository activity.
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:

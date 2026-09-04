@@ -4,9 +4,11 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# Least privilege at the top; each job elevates only what it needs. Without
+# this, every job — including any future one that runs a third-party action —
+# inherits contents:write and packages:write.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
   group: gh-pages
@@ -77,6 +79,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: verify
+    permissions:
+      contents: write # create the GitHub release
+      packages: write # push to GHCR
+      id-token: write # keyless signing identity for the attestation
+      attestations: write
     steps:
       - uses: actions/checkout@v7
 
@@ -101,11 +108,19 @@ jobs:
         run: echo "no_v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build & push multi-arch image
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          # An SBOM and full provenance attached to the image, so a consumer
+          # can answer "what is in this and who built it" without trusting us
+          # to have said so accurately. mode=max records the build steps and
+          # materials; the default mode=min is an unsigned statement with
+          # neither, which is not something anyone can verify.
+          sbom: true
+          provenance: mode=max
           tags: |
             ghcr.io/dmazhukov/cronguard:${{ github.ref_name }}
             ghcr.io/dmazhukov/cronguard:${{ steps.ver.outputs.no_v }}
@@ -114,6 +129,18 @@ jobs:
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+      # Signed, Sigstore-backed provenance tied to this workflow's OIDC
+      # identity — the part BuildKit's own provenance cannot supply. Verify
+      # with:
+      #   gh attestation verify oci://ghcr.io/dmazhukov/cronguard:<tag> \
+      #     --repo dmazhukov/cronguard
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/dmazhukov/cronguard
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
       - uses: actions/setup-go@v6
         with:
@@ -130,12 +157,29 @@ jobs:
           cd config/manager && kustomize edit set image controller=ghcr.io/dmazhukov/cronguard:${{ github.ref_name }} && cd -
           kustomize build config/default > install.yaml
 
+      # Release assets are fetched over plain HTTPS by kubectl apply; a
+      # checksum file is the only way a user can tell a tampered install.yaml
+      # from the real one.
+      - name: Checksums for release assets
+        run: |
+          cp config/crd/bases/monitoring.cronguard.io_cronjobmonitors.yaml .
+          sha256sum install.yaml monitoring.cronguard.io_cronjobmonitors.yaml > checksums.txt
+          cat checksums.txt
+
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            install.yaml
+            monitoring.cronguard.io_cronjobmonitors.yaml
+
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             install.yaml
             config/crd/bases/monitoring.cronguard.io_cronjobmonitors.yaml
+            checksums.txt
           generate_release_notes: true
 
   chart:

@@ -8,11 +8,16 @@ metadata:
   name: controller-manager-metrics-service
   namespace: system
 spec:
+  # Named for what it is. The manager serves /metrics over plain HTTP —
+  # cmd/main.go passes only BindAddress to metricsserver.Options, with no
+  # SecureServing and no authn/authz filter — so a port named "https" made
+  # every ServiceMonitor written against these manifests wrong. Protect the
+  # endpoint with a NetworkPolicy or the mesh until TLS is wired up.
   ports:
-  - name: https
-    port: 8443
+  - name: metrics
+    port: 8080
     protocol: TCP
-    targetPort: 8443
+    targetPort: 8080
   selector:
     control-plane: controller-manager
     app.kubernetes.io/name: cronguard

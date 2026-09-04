@@ -1,6 +1,10 @@
-# This NetworkPolicy allows ingress traffic
-# with Pods running on namespaces labeled with 'metrics: enabled'. Only Pods on those
-# namespaces are able to gather data from the metrics endpoint.
+# Opt-in: not referenced by config/default/kustomization.yaml, so it ships
+# only if you add it. Worth adding — /metrics is served over plain HTTP with
+# no authn/authz filter (see config/default/metrics_service.yaml), so on a
+# cluster with a CNI that enforces NetworkPolicy this is what keeps the
+# endpoint from being readable by any pod.
+#
+# Allows ingress only from namespaces labelled 'metrics: enabled'.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,5 +27,5 @@ spec:
           matchLabels:
             metrics: enabled  # Only from namespaces with this label
       ports:
-        - port: 8443
+        - port: 8080
           protocol: TCP
