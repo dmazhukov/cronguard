@@ -345,6 +345,23 @@ func TestPrevTerminatesOnUnsatisfiableSchedules(t *testing.T) {
 // The horizon claim, asserted rather than asserted-about: every day/month pair
 // the calendar admits must resolve, and only the six impossible ones must not.
 func TestPrevResolvesEverySatisfiableDayMonthPair(t *testing.T) {
+	// Guarded: six of these pairs are the ones that used to loop forever, and
+	// an unguarded sweep would wedge the package at the 10-minute timeout
+	// instead of reporting a clean failure.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		prevDayMonthSweep(t)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("day/month sweep did not terminate")
+	}
+}
+
+func prevDayMonthSweep(t *testing.T) {
+	t.Helper()
 	at := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
 	maxDay := map[int]int{1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 	for month := 1; month <= 12; month++ {
@@ -402,5 +419,25 @@ func TestMissedRunsSinceUnsatisfiableSchedule(t *testing.T) {
 		time.Minute)
 	if got != 0 {
 		t.Errorf("MissedRunsSince = %d, want 0 — a schedule that can never fire misses nothing", got)
+	}
+}
+
+// A zero from Next means "nothing within robfig's reach", not "nothing ever".
+// Stopping on it would trade the 100001 fabrication for a silent under-count
+// on sparse schedules across a long gap — the same class of bug in the other
+// direction.
+func TestMissedRunsSinceSpansGapsWiderThanRobfigReach(t *testing.T) {
+	s, err := schedule.Parse("0 0 29 2 *")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// 2096-03-01 to 2105-01-01 contains exactly one 29 February: 2104, since
+	// 2100 is not a leap year. No single Next call can see that far.
+	got := s.MissedRunsSince(
+		time.Date(2096, 3, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2105, 1, 1, 0, 0, 0, 0, time.UTC),
+		0)
+	if got != 1 {
+		t.Errorf("MissedRunsSince across the century gap = %d, want 1 (2104-02-29)", got)
 	}
 }

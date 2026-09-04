@@ -183,12 +183,24 @@ func (s *Schedule) noSlotInRange(loc *time.Location, x, at time.Time) bool {
 		if !n.IsZero() {
 			return n.After(at)
 		}
-		covered := time.Date(x.In(loc).Year()+robfigReachYears, 12, 31, 23, 59, 59, 0, loc)
-		if !covered.Before(at) {
+		if covered := reachFrom(x, loc); !covered.Before(at) {
 			return true
+		} else { //nolint:revive // the else binds `covered` to the next probe
+			x = covered
 		}
-		x = covered
 	}
+}
+
+// reachFrom returns a conservative lower bound on how far a single Next call
+// from x can see. robfig's limit is the end of year(x)+5, measured after
+// converting x into the schedule's own zone — except when that zone is
+// time.Local, where it uses x's own zone instead. Those can disagree by up to
+// a day at a year boundary, so the bound stops at the start of 31 December
+// rather than its end. Under-approximating costs at most one extra ladder
+// step; over-approximating would let the ladder declare a range empty while a
+// slot still sits in it.
+func reachFrom(x time.Time, loc *time.Location) time.Time {
+	return time.Date(x.In(loc).Year()+robfigReachYears, 12, 31, 0, 0, 0, 0, loc)
 }
 
 // Prev returns the most recent scheduled time at or before `at`, and whether
@@ -254,15 +266,28 @@ func (s *Schedule) MissedRunsSince(lastStart, now time.Time, grace time.Duration
 	if !horizon.After(lastStart) {
 		return 0
 	}
+	loc := s.location()
 	count := 0
 	cursor := lastStart
 	for {
 		next := s.expr.Next(cursor)
-		// A zero return means the schedule has no further slot robfig can
-		// reach. Without this guard the zero time compares as "not after the
-		// horizon" and the loop runs to the safety rail, fabricating 100001
-		// missed runs for a schedule that can never fire.
-		if next.IsZero() || next.After(horizon) {
+		if next.IsZero() {
+			// A zero return does not mean "no more slots" — it means "none
+			// within robfig's five-year reach from the cursor". Reading it as
+			// the former let the zero time compare as "not after the horizon",
+			// so the loop ran to its safety rail and fabricated 100001 missed
+			// runs for a schedule that can never fire; reading it as the
+			// latter and stopping would silently under-count a sparse schedule
+			// across a long gap. Climb by the proven reach instead, the same
+			// way noSlotInRange does.
+			covered := reachFrom(cursor, loc)
+			if !covered.Before(horizon) {
+				return count
+			}
+			cursor = covered
+			continue
+		}
+		if next.After(horizon) {
 			return count
 		}
 		count++
