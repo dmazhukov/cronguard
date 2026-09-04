@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # A repository can go quiet for weeks; a vulnerability disclosure cannot.
+  # govulncheck only ever ran on push and PR, so a CVE published against an
+  # existing dependency stayed invisible until the next commit — which is
+  # exactly how GO-2026-5970 sat undetected in x/text for ten weeks. Re-run
+  # the suite weekly so main is continuously verified, not verified-as-of-last-push.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -132,6 +140,13 @@ jobs:
             echo "::error::Generated files are stale. Run 'make manifests generate' locally and commit the result."
             exit 1
           fi
+      # The chart ships its own copy of the CRD because Helm installs CRDs from
+      # crds/ rather than templates/. That copy is hand-synced and was covered
+      # by no gate at all: the diff above looks only at config/. A stale chart
+      # copy ships green and users installing via Helm get a schema that does
+      # not match the operator's Go types.
+      - name: CRD copies in sync
+        run: make verify-crd-sync
 
   # Phase 2 spec §6 acceptance criteria: helm lint + kubeconform on all
   # rendering combinations of the chart. Catches templating errors (typos
