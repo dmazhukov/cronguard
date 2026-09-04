@@ -176,8 +176,6 @@ func pruneOrphanedRunning(
 ) []string {
 	pruned, names := dropOrphanedRunning(
 		cjm.Status.RecentExecutions, liveJobNames(owned, cj), now, orphanPruneMinAge)
-	if len(names) > 0 {
-		cjm.Status.RecentExecutions = pruned
-	}
+	cjm.Status.RecentExecutions = pruned
 	return names
 }
