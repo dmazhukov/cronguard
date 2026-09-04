@@ -43,9 +43,17 @@ floor := creationTimestamp                 // dead man's switch, unchanged
 if monitor.status.lastScheduleTime != nil:
     floor = monitor.status.lastScheduleTime
 if not scheduleOverridden and monitor.spec.timeZone == "" and
-   cronjob.status.lastScheduleTime > floor:
+   floor < cronjob.status.lastScheduleTime <= now:
     floor = cronjob.status.lastScheduleTime
 ```
+
+The upper clamp matters as much as the lower bound. The witness is only ever
+used to move the floor *toward the present*, so a value past `now` carries no
+information — and without the clamp, clock skew between the
+controller-manager's node and ours (or a hand-patched status) drives the count
+to zero for as long as it stays ahead. The gauge, the condition and the counter
+all derive from that same suppressed value, so nothing anywhere would report
+it. The one-sidedness argument below holds up to `now` and not past it.
 
 The floor is computed per reconcile and is never written back into
 `status.lastScheduleTime`, which remains the actual start of the most recent
@@ -65,9 +73,15 @@ Be clear about the evidentiary status. The upstream type comment says only
 not state the three non-advancement cases. Those are **observed** behaviour of
 kube-controller-manager, which is not a dependency of this repository and cannot
 be verified from this checkout. If a future Kubernetes release advanced the
-field on a skipped slot, CronGuard would quietly start masking real misses. The
-tripwires are the `blackout` and `catchup` specs in
-`internal/controller/correctness_test.go`.
+field on a skipped slot, CronGuard would quietly start masking real misses.
+
+Be honest about what guards that. The `blackout` and `catchup` specs in
+`internal/controller/correctness_test.go` hand-write
+`cj.Status.LastScheduleTime` against a fake client, so they pin *CronGuard's
+arithmetic given a field value* — not upstream's rule for writing it. Nothing
+in this checkout can detect an upstream semantic change; kube-controller-manager
+is not a dependency here. The real tripwire would be an e2e assertion against a
+live control plane, and there isn't one.
 
 ### What we deliberately excluded
 
