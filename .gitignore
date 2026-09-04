@@ -34,11 +34,22 @@ kubeconfig
 *~
 .DS_Store
 
-# Environment
+# Environment. .env.keys holds the dotenvx private key that decrypts .env, so
+# it must be ignored by name — matching only ".env" leaves it exposed. These
+# rules live here rather than in .git/info/exclude on purpose: an exclude file
+# is machine-local, is not versioned, and does not survive a re-clone, so the
+# protection would silently disappear on the next machine.
 .env
 .env.local
+.env.keys
+*.key
+test/loadtest/
 
 # Claude Code working artifacts (kept local only)
 docs/superpowers/
 .omc/
+# Whole directory, deliberately: the skills under .claude/skills/ are
+# Claude-generated working notes about this repo, and the project's rule is
+# that generated process docs stay local. What must survive for contributors
+# lives in docs/ and CONTRIBUTING.md instead.
 .claude/
