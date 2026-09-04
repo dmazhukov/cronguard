@@ -329,10 +329,12 @@ var _ = Describe("orphaned Running records (M4)", func() {
 		Expect(got.Status.ConsecutiveFailures).To(BeNumerically("==", 0))
 	})
 
-	It("never prunes on an early-return path that did not observe Jobs", func() {
+	It("prunes when the CronJob itself is gone", func() {
+		// The owner is gone and garbage collection cascades its Jobs away, so
+		// every Running record left is phantom by construction — and unlike
+		// suspend, the CronJob will not come back on its own. An empty live
+		// set is the observation here; no Job List is needed to reach it.
 		base := time.Now().Add(15 * time.Hour).Truncate(time.Minute)
-		// No CronJob object at all: the CronJobNotFound early return runs, and
-		// that path has no live observation to justify a removal.
 		cjm := monitorFor(ns, "orphan-path-mon", "absent", base.Add(-1*time.Hour))
 		cjm.Status.RecentExecutions = []monitoringv1alpha1.ExecutionRecord{
 			runningRec("stale-1", base.Add(-10*time.Minute)),
@@ -345,7 +347,30 @@ var _ = Describe("orphaned Running records (M4)", func() {
 
 		var got monitoringv1alpha1.CronJobMonitor
 		Expect(r.Get(ctx, key, &got)).To(Succeed())
-		Expect(runningCount(got)).To(Equal(1), "pruning without evidence is the one thing this must not do")
+		Expect(runningCount(got)).To(Equal(0))
+	})
+
+	It("never prunes on a path that could not observe Jobs", func() {
+		// An invalid timezone bails before the Job List while the CronJob —
+		// and possibly a genuinely running Job — is still there. Pruning
+		// without evidence is the one thing this must not do.
+		base := time.Now().Add(15*time.Hour + 30*time.Minute).Truncate(time.Minute)
+		cj := makeCronJob(ns, "badtz", "* * * * *")
+		badTZ := "Not/AZone"
+		cj.Spec.TimeZone = &badTZ
+		cjm := monitorFor(ns, "badtz-mon", "badtz", base.Add(-1*time.Hour))
+		cjm.Status.RecentExecutions = []monitoringv1alpha1.ExecutionRecord{
+			runningRec("badtz-1", base.Add(-10*time.Minute)),
+		}
+
+		r := reconcilerOver(storeWith(cj, cjm), clocktesting.NewFakePassiveClock(base))
+		key := types.NamespacedName{Name: "badtz-mon", Namespace: ns}
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(r.Get(ctx, key, &got)).To(Succeed())
+		Expect(runningCount(got)).To(Equal(1))
 	})
 })
 
@@ -538,6 +563,46 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 			"the baseline must still hold the last durably persisted value")
 	})
 
+	It("realigns the baseline when an early return resets the checkpoint", func() {
+		// CronJobNotFound, InvalidTimeZone and InvalidSchedule all persist
+		// MissedRuns=0. If the in-memory baseline stayed where it was, a
+		// monitor sitting on one of those paths would let the next process
+		// seed from the stale-lower 0 and re-emit a delta this one already
+		// emitted — a reduced C2, through a different door.
+		base := time.Now().Add(26 * time.Hour).Truncate(time.Minute)
+		cj, cjm := seed(base, "earlyret")
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "earlyret-mon", Namespace: ns}
+		read := func() float64 {
+			return testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "earlyret-mon"))
+		}
+
+		clk := clocktesting.NewFakePassiveClock(base)
+		r1 := reconcilerOver(store, clk)
+		_, err := r1.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		clk.SetTime(base.Add(3 * time.Minute))
+		_, err = r1.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		afterFirst := read()
+
+		// The CronJob is pruned away. The path persists MissedRuns=0.
+		Expect(store.Delete(ctx, cj)).To(Succeed())
+		_, err = r1.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var persisted monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &persisted)).To(Succeed())
+		Expect(persisted.Status.MissedRuns).To(BeNumerically("==", 0))
+		r1.lastMissedMu.Lock()
+		inMemory := r1.lastMissed[key]
+		r1.lastMissedMu.Unlock()
+		Expect(inMemory).To(Equal(persisted.Status.MissedRuns),
+			"the baseline must follow the checkpoint on every path that writes it")
+		Expect(read()).To(BeNumerically("==", afterFirst),
+			"realigning the baseline must not emit anything by itself")
+	})
+
 	It("still counts every miss on the happy path", func() {
 		base := time.Now().Add(18 * time.Hour).Truncate(time.Minute)
 		cj, cjm := seed(base, "happy")
@@ -670,10 +735,17 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 		// while this under-count needs the control plane itself to fail AND
 		// recover inside the operator's downtime, a window in which other
 		// alerting is already firing.
+		//
+		// Asserted through the mechanism, not the outcome: the witness is
+		// dated INSIDE the downtime window, so the floor demonstrably jumps
+		// past the slots between the operator's last observation and it, and
+		// only the slots after it are charged. A version of this that just
+		// re-asserted "0" would be indistinguishable from the GC case above
+		// and would pin nothing.
 		st := run("catchup", "*/5 * * * *", "",
-			base.Add(-5*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
-		Expect(st.MissedRuns).To(BeNumerically("==", 0),
-			"documented under-count: the scheduler's catch-up stamp erases the gap")
+			base.Add(-30*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		Expect(st.MissedRuns).To(BeNumerically("==", 5),
+			"the 18 slots before the catch-up stamp are erased by it; only -25m..-5m remain")
 	})
 
 	It("keeps the guard conservative when a timezone is set explicitly", func() {
@@ -701,10 +773,17 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 			"an explicit timezone withholds the CronJob witness")
 	})
 
-	It("degrades safely when the witness is in the future", func() {
+	It("ignores a witness dated in the future", func() {
+		// The witness only ever moves the floor toward the present, so a value
+		// past now carries no information. Without the clamp, clock skew
+		// between the controller-manager's node and ours silences the monitor
+		// for as long as it stays ahead — and the gauge, the condition and the
+		// counter all derive from that one suppressed value, so nothing
+		// anywhere would report it.
 		st := run("skew", "*/5 * * * *", "",
 			base.Add(10*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
-		Expect(st.MissedRuns).To(BeNumerically("==", 0), "clock skew must not produce a negative count")
+		Expect(st.MissedRuns).To(BeNumerically("==", 23),
+			"a future-dated witness must not lower the count below the truth")
 	})
 })
 
@@ -719,12 +798,12 @@ func runningCount(cjm monitoringv1alpha1.CronJobMonitor) int {
 }
 
 // M6 — a schedule that parses but can never fire (Feb 30) used to hang the
-// reconcile worker inside Prev. Once bounded, the reconciler must also stop
-// republishing a drift it can no longer compute.
-var _ = Describe("unresolvable expected slot (M6)", func() {
+// reconcile worker inside Prev. Once bounded, the reconciler must not swing to
+// the other failure: reporting a job that will never run again as healthy.
+var _ = Describe("unsatisfiable schedule (M6)", func() {
 	const ns = "cg-m6"
 
-	It("clears drift instead of freezing the last real value", func() {
+	It("says so loudly instead of reporting health", func() {
 		base := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
 		cj := makeCronJob(ns, "impossible", "0 0 30 2 *")
 		cjm := monitorFor(ns, "impossible-mon", "impossible", base.Add(-30*24*time.Hour))
@@ -756,21 +835,24 @@ var _ = Describe("unresolvable expected slot (M6)", func() {
 
 		var got monitoringv1alpha1.CronJobMonitor
 		Expect(r.Get(ctx, key, &got)).To(Succeed())
-		Expect(got.Status.ScheduleDriftSeconds).To(BeNumerically("==", 0),
-			"a drift that can no longer be computed must not stay frozen at its last real value")
+
+		// The load-bearing assertion: this must not look like health.
+		reconciled := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+		Expect(reconciled).NotTo(BeNil())
+		Expect(reconciled.Status).To(Equal(metav1.ConditionFalse))
+		Expect(reconciled.Reason).To(Equal(monitoringv1alpha1.ReasonUnsatisfiableSchedule))
+		ready := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReady)
+		Expect(ready).NotTo(BeNil())
+		Expect(ready.Status).To(Equal(metav1.ConditionFalse), "an unrunnable job is not Ready")
+		sched := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+		Expect(sched).NotTo(BeNil())
+		Expect(sched.Status).To(Equal(metav1.ConditionUnknown))
+
 		Expect(got.Status.MissedRuns).To(BeNumerically("==", 0),
 			"a schedule that can never fire misses nothing")
-		Expect(got.Status.RecentExecutions).To(HaveLen(1))
-		Expect(got.Status.RecentExecutions[0].ExpectedStartTime).To(BeNil())
-		Expect(got.Status.RecentExecutions[0].DriftSeconds).To(BeNil())
-
-		// history.Merge carries drift annotations forward; once cleared they
-		// must stay cleared rather than being resurrected on the next pass.
-		clk.SetTime(base.Add(2 * time.Minute))
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(r.Get(ctx, key, &got)).To(Succeed())
-		Expect(got.Status.ScheduleDriftSeconds).To(BeNumerically("==", 0))
-		Expect(got.Status.RecentExecutions[0].DriftSeconds).To(BeNil())
+		Expect(got.Status.ScheduleDriftSeconds).To(BeNumerically("==", 0),
+			"a drift that can no longer be computed must not stay frozen at its last real value")
+		Expect(got.Status.NextExpectedTime).To(BeNil(),
+			"publishing the zero time would put 1970 on the next-expected-run gauge")
 	})
 })

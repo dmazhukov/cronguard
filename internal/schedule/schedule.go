@@ -23,8 +23,10 @@
 //     reports it. A daily 02:30 job has zero expected runs on the gap day, and
 //     the absence is not a missed run.
 //   - Fall back: a slot whose wall-clock time occurs twice is two runs, at two
-//     distinct instants. A daily 02:30 job has two expected runs on the
-//     overlap day, so a job that runs once that day has missed one.
+//     distinct instants. A daily job whose slot falls inside the repeated hour
+//     has two expected runs that day, so running once means one missed. Which
+//     hour repeats is zone-specific — 01:00 in the US, 02:00 in the EU — so
+//     the same expression is doubled in one zone and untouched in another.
 //
 // A schedule finer than the DST step can therefore return a Next whose local
 // wall clock is earlier than the previous slot's. Instants are strictly
@@ -183,11 +185,11 @@ func (s *Schedule) noSlotInRange(loc *time.Location, x, at time.Time) bool {
 		if !n.IsZero() {
 			return n.After(at)
 		}
-		if covered := reachFrom(x, loc); !covered.Before(at) {
+		covered := reachFrom(x, loc)
+		if !covered.Before(at) {
 			return true
-		} else { //nolint:revive // the else binds `covered` to the next probe
-			x = covered
 		}
+		x = covered
 	}
 }
 
@@ -237,10 +239,9 @@ func (s *Schedule) Prev(at time.Time) (time.Time, bool) {
 	}
 	lo, hi := floor, at
 	for hi.Sub(lo) > time.Second {
+		// Both ends are whole seconds and the loop condition keeps them at
+		// least two apart, so mid always lands strictly between them.
 		mid := lo.Add(hi.Sub(lo) / 2).Truncate(time.Second)
-		if !mid.After(lo) {
-			break
-		}
 		if s.noSlotInRange(loc, mid, at) {
 			hi = mid
 		} else {
@@ -297,11 +298,4 @@ func (s *Schedule) MissedRunsSince(lastStart, now time.Time, grace time.Duration
 			return count
 		}
 	}
-}
-
-// NewForTest builds a Schedule around an arbitrary cron.Schedule. It exists so
-// tests can instrument the underlying oracle — e.g. to assert that Prev's work
-// stays bounded — without exporting the field itself.
-func NewForTest(expr cron.Schedule) *Schedule {
-	return &Schedule{expr: expr}
 }
