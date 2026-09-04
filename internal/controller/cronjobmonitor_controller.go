@@ -286,8 +286,24 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Compute drift for the most recent run.
 	if cjm.Status.LastScheduleTime != nil {
-		expected := parsed.Prev(cjm.Status.LastScheduleTime.Time)
-		if !expected.IsZero() {
+		expected, found := parsed.Prev(cjm.Status.LastScheduleTime.Time)
+		if !found {
+			// No slot within the lookback horizon corresponds to this start:
+			// the expression parses but can never fire, or the run is off the
+			// grid entirely. Publish "not measured" rather than leaving the
+			// last real drift frozen in status — the collector republishes
+			// that value on every scrape, so a stale one ranks in the
+			// runbook's topk query forever.
+			cjm.Status.ScheduleDriftSeconds = 0
+			if len(cjm.Status.RecentExecutions) > 0 {
+				rec := &cjm.Status.RecentExecutions[0]
+				rec.ExpectedStartTime = nil
+				rec.DriftSeconds = nil
+			}
+			log.V(1).Info("expected slot unresolvable", "schedule", scheduleExpr,
+				"lastScheduleTime", cjm.Status.LastScheduleTime.Time)
+		}
+		if found {
 			drift := schedule.Drift(cjm.Status.LastScheduleTime.Time, expected)
 			cjm.Status.ScheduleDriftSeconds = int32(drift.Seconds())
 			if len(cjm.Status.RecentExecutions) > 0 {
