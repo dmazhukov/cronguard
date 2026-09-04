@@ -124,13 +124,46 @@ func TestDropOrphanedRunning(t *testing.T) {
 	}
 }
 
-func TestOrphanPruneMinAgeIsIndependentOfGracePeriod(t *testing.T) {
-	// Pinned so nobody re-couples orphan belief to schedule-lateness
-	// tolerance: gracePeriodSeconds is legal up to 86399, and wiring it in
-	// here would let a sloppy-scheduler setting delay phantom cleanup by most
-	// of a day.
-	if orphanPruneMinAge != time.Minute {
-		t.Errorf("orphanPruneMinAge = %s, want 1m", orphanPruneMinAge)
+// Pruning must not be delayed by gracePeriodSeconds. That field is a tolerance
+// for schedule lateness and is legal up to 86399, so re-coupling it here would
+// let a sloppy-scheduler setting hold a phantom for most of a day. Exercised
+// through pruneOrphanedRunning — the call site where the coupling would be
+// reintroduced — rather than by asserting the constant's value, which no
+// re-coupling would change.
+func TestPruneIgnoresGracePeriod(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	for _, grace := range []int32{0, 60, 3600, 86399} {
+		cjm := &monitoringv1alpha1.CronJobMonitor{
+			Spec: monitoringv1alpha1.CronJobMonitorSpec{GracePeriodSeconds: grace},
+			Status: monitoringv1alpha1.CronJobMonitorStatus{
+				RecentExecutions: []monitoringv1alpha1.ExecutionRecord{
+					runningRec("gone-1", now.Add(-2*time.Minute)),
+				},
+			},
+		}
+		dropped := pruneOrphanedRunning(cjm, nil, &batchv1.CronJob{}, now)
+		if !equalStrings(dropped, []string{"gone-1"}) {
+			t.Errorf("gracePeriodSeconds=%d: dropped = %v, want [gone-1] — "+
+				"a two-minute-old phantom must not wait on a schedule-lateness tolerance",
+				grace, dropped)
+		}
+		if len(cjm.Status.RecentExecutions) != 0 {
+			t.Errorf("gracePeriodSeconds=%d: record survived the prune", grace)
+		}
+	}
+
+	// The other half of the same property: a record younger than one reconcile
+	// cycle survives no matter how generous the grace period is.
+	cjm := &monitoringv1alpha1.CronJobMonitor{
+		Spec: monitoringv1alpha1.CronJobMonitorSpec{GracePeriodSeconds: 86399},
+		Status: monitoringv1alpha1.CronJobMonitorStatus{
+			RecentExecutions: []monitoringv1alpha1.ExecutionRecord{
+				runningRec("fresh-1", now.Add(-30*time.Second)),
+			},
+		},
+	}
+	if dropped := pruneOrphanedRunning(cjm, nil, &batchv1.CronJob{}, now); len(dropped) != 0 {
+		t.Errorf("dropped a 30s-old record: %v", dropped)
 	}
 }
 

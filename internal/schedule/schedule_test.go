@@ -441,3 +441,34 @@ func TestMissedRunsSinceSpansGapsWiderThanRobfigReach(t *testing.T) {
 		t.Errorf("MissedRunsSince across the century gap = %d, want 1 (2104-02-29)", got)
 	}
 }
+
+// Prev refuses to search below year prevLookbackYears rather than constructing
+// a floor in year 0. This is the second of the two routes the doc promises
+// return not-found, and the only statement in the package that nothing else
+// reaches.
+func TestPrevBelowHorizonReturnsNotFound(t *testing.T) {
+	s, err := schedule.Parse("0 0 * * *")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// Years at or below the lookback horizon have no representable floor.
+	for _, year := range []int{1, 5, 9} {
+		at := time.Date(year, 6, 1, 0, 0, 0, 0, time.UTC)
+		if got, found := s.Prev(at); found {
+			t.Errorf("Prev(year %d) = %v, found=true; want not-found", year, got)
+		}
+	}
+	// The first year above it resolves normally.
+	at := time.Date(10, 6, 1, 12, 0, 0, 0, time.UTC)
+	got, found := s.Prev(at)
+	if !found {
+		t.Fatalf("Prev(year 10): not found, want a slot")
+	}
+	if want := time.Date(10, 6, 1, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("Prev(year 10) = %v, want %v", got, want)
+	}
+	// A zero metav1.Time reaching Prev must degrade, not panic.
+	if _, found := s.Prev(time.Time{}); found {
+		t.Error("Prev(zero time) reported a slot")
+	}
+}
