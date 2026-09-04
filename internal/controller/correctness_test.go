@@ -242,6 +242,45 @@ var _ = Describe("orphaned Running records (M4)", func() {
 			"pruning must not disturb the suspend freeze")
 	})
 
+	It("does not prune when the Job list fails on the suspend path", func() {
+		// The suspend path swallows a List error on purpose — its job is to
+		// report suspension, not to fail the reconcile — so nothing else would
+		// notice if it pruned against an empty list instead of skipping.
+		base := time.Now().Add(27 * time.Hour).Truncate(time.Minute)
+		suspend := true
+		cj := makeCronJob(ns, "susplist", "* * * * *")
+		cj.Spec.Suspend = &suspend
+		cjm := monitorFor(ns, "susplist-mon", "susplist", base.Add(-2*time.Hour))
+		cjm.Status.RecentExecutions = []monitoringv1alpha1.ExecutionRecord{
+			runningRec("susplist-1", base.Add(-10*time.Minute)),
+		}
+		store := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(cj, cjm).
+			WithStatusSubresource(&monitoringv1alpha1.CronJobMonitor{}).
+			WithInterceptorFuncs(interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList,
+					opts ...client.ListOption) error {
+					if _, ok := list.(*batchv1.JobList); ok {
+						return fmt.Errorf("simulated list failure")
+					}
+					return c.List(ctx, list, opts...)
+				},
+			}).Build()
+
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(base))
+		key := types.NamespacedName{Name: "susplist-mon", Namespace: ns}
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred(), "a List failure must not break the suspend report")
+
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		Expect(runningCount(got)).To(Equal(1), "no live observation means no removal")
+		cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonSuspended))
+	})
+
 	It("does not prune when the Job list fails", func() {
 		// The whole safety argument rests on a List error aborting before the
 		// prune. Pinned so a refactor cannot swallow the error and then prune
@@ -532,11 +571,24 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 
 		clk := clocktesting.NewFakePassiveClock(base)
 		r := reconcilerOver(store, clk)
-		for _, offset := range []time.Duration{0, 3 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute} {
+		reconcileAt := func(offset time.Duration) {
 			clk.SetTime(base.Add(offset))
 			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 			Expect(err).NotTo(HaveOccurred())
 		}
+
+		reconcileAt(0) // settles the baseline; write #1 succeeds
+
+		// Writes #2..#4 conflict. Asserting only the final total would pass
+		// under piecemeal emission too — 3+1+1 also sums to 5 — so check that
+		// nothing is emitted at all while the checkpoint is not advancing.
+		for _, offset := range []time.Duration{3 * time.Minute, 4 * time.Minute, 5 * time.Minute} {
+			reconcileAt(offset)
+			Expect(read()).To(BeNumerically("==", before),
+				"a failed write must emit nothing, not a partial delta")
+		}
+
+		reconcileAt(5 * time.Minute) // write #5 succeeds
 		Expect(read()-before).To(BeNumerically("==", 5),
 			"one cumulative delta against the baseline that was never advanced")
 	})
@@ -638,25 +690,25 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 	const ns = "cg-m5"
 
-	// run reconciles once against a store seeded with a CronJob whose
-	// status.lastScheduleTime is cjLast (zero means "never scheduled"), and a
-	// monitor that last observed a run at cjmLast.
-	run := func(name, cjSchedule, monSchedule string, cjLast, cjmLast, created, now time.Time,
-	) monitoringv1alpha1.CronJobMonitorStatus {
-		cj := makeCronJob(ns, name, cjSchedule)
-		if !cjLast.IsZero() {
-			cj.Status.LastScheduleTime = &metav1.Time{Time: cjLast}
+	// run reconciles once against a store seeded from the scenario. Named
+	// fields rather than positional arguments: four of these are time.Time and
+	// therefore interchangeable at the type level, so a transposed pair would
+	// compile and quietly assert something else.
+	run := func(sc scenario) monitoringv1alpha1.CronJobMonitorStatus {
+		cj := makeCronJob(ns, sc.name, sc.cronJobSchedule)
+		if !sc.schedulerLastFired.IsZero() {
+			cj.Status.LastScheduleTime = &metav1.Time{Time: sc.schedulerLastFired}
 		}
-		cjm := monitorFor(ns, name+"-mon", name, created)
+		cjm := monitorFor(ns, sc.name+"-mon", sc.name, sc.monitorCreated)
 		cjm.Spec.GracePeriodSeconds = 60
-		cjm.Spec.Schedule = monSchedule
-		if !cjmLast.IsZero() {
-			cjm.Status.LastScheduleTime = &metav1.Time{Time: cjmLast}
+		cjm.Spec.Schedule = sc.monitorScheduleOverride
+		if !sc.operatorLastObserved.IsZero() {
+			cjm.Status.LastScheduleTime = &metav1.Time{Time: sc.operatorLastObserved}
 		}
 
 		store := storeWith(cj, cjm)
-		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
-		key := types.NamespacedName{Name: name + "-mon", Namespace: ns}
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(sc.now))
+		key := types.NamespacedName{Name: sc.name + "-mon", Namespace: ns}
 		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 		Expect(err).NotTo(HaveOccurred())
 		var got monitoringv1alpha1.CronJobMonitor
@@ -669,15 +721,27 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 	It("charges nothing when the scheduler kept firing through the downtime", func() {
 		// Operator blind from 10:00; kube-controller-manager scheduled through
 		// 11:55 and every Job was TTL-deleted before the restart.
-		st := run("gcd", "*/5 * * * *", "",
-			base.Add(-5*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "gcd",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(-5 * time.Minute),
+			operatorLastObserved: base.Add(-2 * time.Hour),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 0),
 			"23 successful runs were GC'd; none of them is a miss")
 	})
 
 	It("charges only the slots after the scheduler's own last one", func() {
-		st := run("partial", "*/5 * * * *", "",
-			base.Add(-15*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "partial",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(-15 * time.Minute),
+			operatorLastObserved: base.Add(-2 * time.Hour),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 2),
 			"slots at -10m and -5m are past the scheduler's own floor; the horizon excludes the newest")
 	})
@@ -685,8 +749,14 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 	It("still charges every slot when the whole control plane was down", func() {
 		// The witness is as stale as our own record, which is what keeps
 		// operator-down / never-firing detection working.
-		st := run("blackout", "*/5 * * * *", "",
-			base.Add(-2*time.Hour), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "blackout",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(-2 * time.Hour),
+			operatorLastObserved: base.Add(-2 * time.Hour),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 23))
 		cond := findCondition(st.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
 		Expect(cond).NotTo(BeNil())
@@ -696,8 +766,12 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 	It("leaves the dead man's switch untouched", func() {
 		// Nothing ever ran and the CronJob controller never scheduled
 		// anything: both witnesses are nil, so the floor is the CR's creation.
-		st := run("never", "*/5 * * * *", "",
-			time.Time{}, time.Time{}, base.Add(-1*time.Hour), base)
+		st := run(scenario{
+			name:            "never",
+			cronJobSchedule: "*/5 * * * *",
+			monitorCreated:  base.Add(-1 * time.Hour),
+			now:             base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 11),
 			"slots from creation up to the grace horizon")
 		cond := findCondition(st.Conditions, monitoringv1alpha1.ConditionScheduleHealthy)
@@ -708,8 +782,15 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 	It("ignores the CronJob's witness when the monitor overrides the schedule", func() {
 		// The CronJob's slot grid is not the monitored one, so its
 		// lastScheduleTime is not evidence about our slots.
-		st := run("override", "0,30 * * * *", "*/5 * * * *",
-			base.Add(-5*time.Minute), base.Add(-30*time.Minute), base.Add(-2*time.Hour), base)
+		st := run(scenario{
+			name:                    "override",
+			cronJobSchedule:         "0,30 * * * *",
+			monitorScheduleOverride: "*/5 * * * *",
+			schedulerLastFired:      base.Add(-5 * time.Minute),
+			operatorLastObserved:    base.Add(-30 * time.Minute),
+			monitorCreated:          base.Add(-2 * time.Hour),
+			now:                     base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 5),
 			"five */5 slots elapsed since the monitor's own last observation, within the grace horizon")
 	})
@@ -718,8 +799,14 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 		// Pins that the merge is a max and not an unconditional assignment:
 		// when the operator saw a run more recently than the scheduler's
 		// record, our own observation must win.
-		st := run("stale-witness", "*/5 * * * *", "",
-			base.Add(-2*time.Hour), base.Add(-30*time.Minute), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "stale-witness",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(-2 * time.Hour),
+			operatorLastObserved: base.Add(-30 * time.Minute),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 5),
 			"slots from -25m to -5m; the older CronJob witness must not lower the floor")
 	})
@@ -742,8 +829,14 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 		// only the slots after it are charged. A version of this that just
 		// re-asserted "0" would be indistinguishable from the GC case above
 		// and would pin nothing.
-		st := run("catchup", "*/5 * * * *", "",
-			base.Add(-30*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "catchup",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(-30 * time.Minute),
+			operatorLastObserved: base.Add(-2 * time.Hour),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 5),
 			"the 18 slots before the catch-up stamp are erased by it; only -25m..-5m remain")
 	})
@@ -780,8 +873,14 @@ var _ = Describe("missed-run floor across operator downtime (M5)", func() {
 		// for as long as it stays ahead — and the gauge, the condition and the
 		// counter all derive from that one suppressed value, so nothing
 		// anywhere would report it.
-		st := run("skew", "*/5 * * * *", "",
-			base.Add(10*time.Minute), base.Add(-2*time.Hour), base.Add(-3*time.Hour), base)
+		st := run(scenario{
+			name:                 "skew",
+			cronJobSchedule:      "*/5 * * * *",
+			schedulerLastFired:   base.Add(10 * time.Minute),
+			operatorLastObserved: base.Add(-2 * time.Hour),
+			monitorCreated:       base.Add(-3 * time.Hour),
+			now:                  base,
+		})
 		Expect(st.MissedRuns).To(BeNumerically("==", 23),
 			"a future-dated witness must not lower the count below the truth")
 	})
@@ -856,3 +955,16 @@ var _ = Describe("unsatisfiable schedule (M6)", func() {
 			"publishing the zero time would put 1970 on the next-expected-run gauge")
 	})
 })
+
+// scenario describes one operator-downtime situation for the M5 specs. The
+// fields are named because four of them are time.Time: positionally, a
+// transposed pair compiles and silently tests a different world.
+type scenario struct {
+	name                    string
+	cronJobSchedule         string
+	monitorScheduleOverride string
+	schedulerLastFired      time.Time // CronJob.status.lastScheduleTime; zero means never
+	operatorLastObserved    time.Time // the monitor's own last observed start
+	monitorCreated          time.Time
+	now                     time.Time
+}
