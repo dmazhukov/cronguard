@@ -185,6 +185,17 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Message:            "CronJob is suspended; missed-run counter frozen",
 			ObservedGeneration: cjm.Generation,
 		})
+		// A CronJob suspended mid-run is precisely the shape that strands a
+		// phantom Running record: no newer run will ever arrive to push it out
+		// of the ring, so without this the count stays wrong forever. The
+		// freeze above is about the missed-run counter; it is not a licence to
+		// keep reporting a Job as running after it is gone. A List failure
+		// here is not fatal — the path's job is to report suspension.
+		if owned, lerr := listOwnedJobs(ctx, r.Client, cj); lerr != nil {
+			log.V(1).Info("skip orphan prune on suspend path", "err", lerr.Error())
+		} else if names := pruneOrphanedRunning(cjm, owned, cj, r.now()); len(names) > 0 {
+			log.V(1).Info("dropped orphaned Running records", "jobs", names, "path", "suspend")
+		}
 		return r.finishEarlyReturn(ctx, cjm, priorReconciled,
 			corev1.EventTypeWarning, monitoringv1alpha1.ReasonCronJobSuspended,
 			"CronJob is suspended", &result)
@@ -306,7 +317,15 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if found {
 			drift := schedule.Drift(cjm.Status.LastScheduleTime.Time, expected)
 			cjm.Status.ScheduleDriftSeconds = int32(drift.Seconds())
-			if len(cjm.Status.RecentExecutions) > 0 {
+			// Annotate the newest record only when it IS the run
+			// LastScheduleTime refers to. The scalar is a monotone latch, so
+			// after the orphan prune (or a ring truncation) the newest
+			// surviving record can belong to an earlier slot — annotating it
+			// with this slot's expected start would permanently mislabel a
+			// terminal run, and history.Merge would carry the wrong values
+			// forward.
+			if len(cjm.Status.RecentExecutions) > 0 &&
+				cjm.Status.RecentExecutions[0].StartTime.Equal(cjm.Status.LastScheduleTime) {
 				rec := &cjm.Status.RecentExecutions[0]
 				exp := metav1.NewTime(expected)
 				rec.ExpectedStartTime = &exp
@@ -316,12 +335,50 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	// M4: a Job observed Running and then garbage-collected before its
+	// terminal transition was seen stays Running in history forever, so
+	// cronguard_running_jobs counts a job that no longer exists. Placed AFTER
+	// the drift block on purpose: LastScheduleTime has already been latched
+	// monotonically and RecentExecutions[0] already carries its drift
+	// annotation, so pruning here cannot change any derived scalar — only the
+	// running count. Only the happy path prunes; the early-return paths never
+	// list Jobs and so have no live observation to justify a removal.
+	if names := pruneOrphanedRunning(cjm, owned, cj, now); len(names) > 0 {
+		log.V(1).Info("dropped orphaned Running records", "jobs", names)
+	}
+
 	// Missed-runs count since last observed start (or CJM creation time if no runs).
 	var lastStart time.Time
 	if cjm.Status.LastScheduleTime != nil {
 		lastStart = cjm.Status.LastScheduleTime.Time
 	} else {
 		lastStart = cjm.CreationTimestamp.Time
+	}
+	// M5: Status.LastScheduleTime only advances from Jobs this operator saw,
+	// and Kubernetes garbage-collects finished Jobs (ttlSecondsAfterFinished,
+	// successfulJobsHistoryLimit). So "no Job object" is a proxy for "the slot
+	// did not fire" that decays with time: after operator downtime longer than
+	// the Job TTL, every slot that ran perfectly is charged as missed. Raise
+	// the floor with the scheduler's own record, which is never GC'd.
+	//
+	// The witness is one-sided in the safe direction: kube-controller-manager
+	// writes CronJob.Status.LastScheduleTime only after a Job POST succeeds,
+	// and does NOT advance it on a create failure, a startingDeadlineSeconds
+	// miss, or a Forbid skip — so every case a user would call a real miss
+	// leaves it un-advanced and the slot still countable. When the whole
+	// control plane is down the witness goes stale too, which is what keeps
+	// the never-fired / operator-down detection working.
+	//
+	// LastSuccessfulTime is deliberately NOT admitted: it is a completion
+	// time, so a long-running Forbid job would push the floor past slots its
+	// own runtime suppressed and mask them.
+	//
+	// Only admissible when we are monitoring the CronJob's own slot grid — an
+	// overridden schedule or timezone means the CronJob's slots are not ours.
+	if !scheduleOverridden && cjm.Spec.TimeZone == "" &&
+		cj.Status.LastScheduleTime != nil &&
+		cj.Status.LastScheduleTime.After(lastStart) {
+		lastStart = cj.Status.LastScheduleTime.Time
 	}
 	missed := int32(parsed.MissedRunsSince(lastStart, now, time.Duration(cjm.Spec.GracePeriodSeconds)*time.Second)) //nolint:gosec // G115: missed-run count is bounded by reconcile cadence and fits in int32
 
@@ -337,17 +394,19 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// firing a spurious BurnFast (or, after a counter reset, masking a real
 	// burn). Seeding makes the first post-failover delta 0; only genuinely new
 	// misses observed by this process increment the counter.
+	//
+	// F9: this only READS the baseline. Advancing it and emitting the delta is
+	// deferred to commitMissed, after the status patch lands — see the
+	// invariant documented there. The read must stay above
+	// evaluateScheduleHealthy, which overwrites cjm.Status.MissedRuns with
+	// `missed`; reading after it would seed prev from missed and silently zero
+	// every delta.
 	r.lastMissedMu.Lock()
 	prev, seen := r.lastMissed[req.NamespacedName]
 	if !seen {
 		prev = cjm.Status.MissedRuns
 	}
-	r.lastMissed[req.NamespacedName] = missed
 	r.lastMissedMu.Unlock()
-	if missed > prev {
-		metrics.MissedRunsTotal.WithLabelValues(req.Namespace, req.Name).
-			Add(float64(missed - prev))
-	}
 
 	evaluateScheduleHealthy(cjm, missed)
 	evaluateExecutionHealthy(cjm)
@@ -380,6 +439,8 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		log.V(2).Info("requeue after status conflict", "after", res.RequeueAfter)
 		return res, nil
 	}
+	// Status.MissedRuns is durable from here on, so the baseline may advance.
+	r.commitMissed(req.NamespacedName, missed, prev)
 	log.V(2).Info("reconciled", "missed", missed, "drift_s", cjm.Status.ScheduleDriftSeconds, "next_expected", nextExpected, "requeue_in", requeue)
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
@@ -533,9 +594,55 @@ func (r *CronJobMonitorReconciler) emitTransitionEvents(
 	}
 }
 
+// commitMissed advances the in-memory burn-counter baseline and emits the
+// positive delta. It must be called only after Status.MissedRuns has been
+// durably persisted, because that field is the checkpoint the C2 seeding path
+// reads back on the first sight of a key after a restart or leader failover.
+//
+// The invariant is: lastMissed[key] never leads the last persisted value of
+// Status.MissedRuns. Break it and a process that dies with an unpersisted
+// advance lets its successor seed from the stale-lower value and re-emit a
+// delta the predecessor already emitted — Prometheus reads the restart as a
+// counter reset, so increase() over the window sums both. That is C2's failure
+// mode at reduced magnitude, and the same spurious BurnFast.
+//
+// Note that a conflict is NOT an error here: patchStatus reports it as a
+// RequeueAfter result, so the caller must gate on err == nil AND
+// res.RequeueAfter == 0, not on err alone.
+//
+// The residual is a deliberate at-most-once loss: a crash between the
+// successful patch and this call drops that delta for good, and the successor
+// — seeding from the now-updated checkpoint — will not re-emit it. That window
+// is prior to, not inside, the loss window scrape granularity already imposes;
+// what carries the trade is its size, two statements with no I/O against a
+// scrape interval measured in tens of seconds.
+//
+// Under-reporting is the direction to prefer anyway. An over-count inflates
+// the burn rate and pages on a healthy monitor, and increase() cannot tell a
+// phantom increment from a real one after the fact. An under-count is visible
+// through cronguard_reconcile_total{result="error"} and the operator-down
+// alert — note that the missed-runs gauge and the ScheduleHealthy condition
+// are NOT independent witnesses here: the collector serves them from the
+// manager cache, so under a sustained write failure they are exactly as stale
+// as the counter is frozen.
+func (r *CronJobMonitorReconciler) commitMissed(key types.NamespacedName, missed, prev int32) {
+	r.lastMissedMu.Lock()
+	r.lastMissed[key] = missed
+	r.lastMissedMu.Unlock()
+	if missed > prev {
+		metrics.MissedRunsTotal.WithLabelValues(key.Namespace, key.Name).
+			Add(float64(missed - prev))
+	}
+}
+
 func (r *CronJobMonitorReconciler) patchStatus(ctx context.Context, cjm *monitoringv1alpha1.CronJobMonitor) (ctrl.Result, error) {
 	if err := r.Status().Update(ctx, cjm); err != nil {
 		if apierrors.IsConflict(err) {
+			// A non-zero RequeueAfter from this function means status was NOT
+			// persisted. Callers gate durable-checkpoint work (commitMissed)
+			// on it, so any future path that returns a backoff from here must
+			// preserve that meaning — returning one on a successful write
+			// would silently stop the burn counter.
 			return ctrl.Result{RequeueAfter: requeueAfterConflict}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("status update: %w", err)
