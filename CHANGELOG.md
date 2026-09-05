@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Kubernetes libraries to 0.37.0 and controller-runtime to 0.25.0.** These move together on purpose: controller-runtime composes with client-go interfaces, and bumping one ahead of the other produces code that does not build (the reason the two Dependabot groups were merged into one). envtest follows the go.mod version automatically, so the suite now runs against a 1.37 control plane.
 - **CI runs weekly on a schedule**, so a vulnerability disclosed against an existing dependency surfaces without waiting for the next commit.
 - **The chart's CRD copy is now gated.** `manifests-clean` only ever diffed `config/`, so a stale `charts/cronguard/crds/` shipped green and Helm users could get a schema that did not match the operator's types. `make sync-crd` regenerates it; `make verify-crd-sync` is the gate.
 
