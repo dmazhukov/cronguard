@@ -174,23 +174,28 @@ const (
 
 // Condition reason constants.
 const (
-	ReasonReconcileSuccess    = "ReconcileSuccess"
-	ReasonInvalidSchedule     = "InvalidSchedule"
-	ReasonInvalidTimeZone     = "InvalidTimeZone"
-	ReasonCronJobNotFound     = "CronJobNotFound"
-	ReasonCronJobSuspended    = "CronJobSuspended"
-	ReasonScheduleMismatch    = "ScheduleMismatch"
-	ReasonOnSchedule          = "OnSchedule"
-	ReasonScheduleMissed      = "ScheduleMissed"
-	ReasonSuspended           = "Suspended"
-	ReasonNoSchedule          = "NoSchedule"
-	ReasonRecentSuccess       = "RecentSuccess"
-	ReasonConsecutiveFailures = "ConsecutiveFailures"
-	ReasonNoRuns              = "NoRuns"
-	ReasonWithinBudget        = "WithinBudget"
-	ReasonDurationExceeded    = "DurationExceeded"
-	ReasonCheckDisabled       = "CheckDisabled"
-	ReasonAllChecksPass       = "AllChecksPass"
+	ReasonReconcileSuccess = "ReconcileSuccess"
+	ReasonInvalidSchedule  = "InvalidSchedule"
+	// ReasonUnsatisfiableSchedule marks an expression that parses but matches
+	// no date on the calendar — "0 0 30 2 *", "0 0 31 4 *". Kubernetes accepts
+	// these on a CronJob, so the monitor must say so loudly rather than
+	// reporting a job that will never run again as perfectly on schedule.
+	ReasonUnsatisfiableSchedule = "UnsatisfiableSchedule"
+	ReasonInvalidTimeZone       = "InvalidTimeZone"
+	ReasonCronJobNotFound       = "CronJobNotFound"
+	ReasonCronJobSuspended      = "CronJobSuspended"
+	ReasonScheduleMismatch      = "ScheduleMismatch"
+	ReasonOnSchedule            = "OnSchedule"
+	ReasonScheduleMissed        = "ScheduleMissed"
+	ReasonSuspended             = "Suspended"
+	ReasonNoSchedule            = "NoSchedule"
+	ReasonRecentSuccess         = "RecentSuccess"
+	ReasonConsecutiveFailures   = "ConsecutiveFailures"
+	ReasonNoRuns                = "NoRuns"
+	ReasonWithinBudget          = "WithinBudget"
+	ReasonDurationExceeded      = "DurationExceeded"
+	ReasonCheckDisabled         = "CheckDisabled"
+	ReasonAllChecksPass         = "AllChecksPass"
 )
 
 // +kubebuilder:object:root=true

@@ -55,6 +55,8 @@ User-visible impact: the Job's downstream output is now stale and getting staler
 - Node resource exhaustion: no node has enough CPU/memory for the pod, so scheduling fails.
 - Cluster Autoscaler is provisioning a node, exceeding `startingDeadlineSeconds`.
 - `ImagePullBackOff` on the Job's pod (private registry credentials expired, tag deleted).
+- **A daylight-saving transition in `status.resolvedTimeZone`.** On the fall-back day a daily job has two expected runs, not one, so a workload that cannot run twice in the repeated hour — a long job under `concurrencyPolicy: Forbid`, for instance — legitimately misses one. On the spring-forward day a job whose slot falls in the skipped hour has no expected run at all. Check whether the alert window straddles a transition before chasing anything else.
+- **The operator was down longer than the Job TTL.** Runs that completed and were garbage-collected during the outage are not charged as missed — the CronJob's own `status.lastScheduleTime` is used as a floor. But if kube-controller-manager *also* went down and recovered before the operator did, its single catch-up stamp erases the gap and those misses go uncounted. See [ADR 0001](../adr/0001-cronjob-status-as-missed-run-floor.md).
 - Missing ServiceAccount or RBAC the Job pod needs to start.
 
 ## Remediation
