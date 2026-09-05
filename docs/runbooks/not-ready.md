@@ -73,7 +73,10 @@ The `reason` on the False `Reconciled` condition is one of these PascalCase stri
   kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.schedule}'
   kubectl get cronjob <ref-name> -n <ns> -o jsonpath='{.spec.schedule}'
   ```
-  CronGuard accepts standard 5-field cron with the robfig/cron v3 grammar; `@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly` descriptors and inline `CRON_TZ=Region/City ...` prefixes also work.
+  CronGuard accepts standard 5-field cron with the robfig/cron v3 grammar, the fixed descriptors `@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly`, and inline `CRON_TZ=Region/City ...` prefixes. That list is exclusive — two forms Kubernetes accepts are rejected here on purpose:
+  - **`@every <duration>`** is an interval, not a wall-clock grid: robfig computes each slot relative to the previous fire, so there is no expected start to compare a run against, drift is always ~0 and missed runs are uncountable. Every SLO axis CronGuard publishes would be meaningless. Fix the CronJob (`@every 30m` → `*/30 * * * *`) or remove the monitor. Note this reaches CronGuard through `CronJob.spec.schedule` too, which no admission rule of ours inspects.
+  - **A date the calendar never has** — `0 0 30 2 *`, `0 0 31 4 *`. These parse, and Kubernetes accepts them, but the job will never run again. They surface as reason `UnsatisfiableSchedule` rather than `InvalidSchedule`.
+- `UnsatisfiableSchedule` — the expression parses but matches no date on the calendar (February 30th, April 31st). The CronJob is not running and never will; correct the day-of-month for the month you meant.
 - `InvalidTimeZone` — `spec.timeZone` (or the referenced CronJob's `spec.timeZone`) failed `time.LoadLocation`. Must be an IANA name (`America/New_York`, `Europe/Moscow`, `UTC`); operating-system aliases like `EST` or `PST` are rejected.
   ```bash
   kubectl get cronjobmonitor <name> -n <ns> -o jsonpath='{.spec.timeZone}'

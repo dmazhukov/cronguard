@@ -1,4 +1,5 @@
-# This patch adds the args to allow exposing the metrics endpoint using HTTPS
+# Bind the metrics endpoint to all interfaces so the Service can reach it.
+# Plain HTTP — see metrics_service.yaml for why the port is not named "https".
 - op: add
   path: /spec/template/spec/containers/0/args/0
-  value: --metrics-bind-address=:8443
+  value: --metrics-bind-address=:8080

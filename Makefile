@@ -141,6 +141,9 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+BASE_CRD = config/crd/bases/monitoring.cronguard.io_cronjobmonitors.yaml
+CHART_CRD = charts/cronguard/crds/cronjobmonitors.yaml
+
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
@@ -180,6 +183,19 @@ setup-envtest: envtest ## Download the binaries required for ENVTEST in the loca
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: sync-crd
+sync-crd: manifests ## Regenerate the chart's CRD copy from the kustomize base.
+	@printf '%s\n%s\n' \
+	  "# This CRD is managed by Helm via the chart's crds/ directory." \
+	  "# helm install creates it; helm upgrade does NOT modify it (Helm 3 design)." \
+	  > $(CHART_CRD)
+	@cat $(BASE_CRD) >> $(CHART_CRD)
+
+.PHONY: verify-crd-sync
+verify-crd-sync: ## Fail if the chart's CRD copy has drifted from the kustomize base.
+	@diff <(tail -n +3 $(CHART_CRD)) $(BASE_CRD) \
+	  || { echo "ERROR: $(CHART_CRD) is stale. Run 'make sync-crd' and commit."; exit 1; }
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.

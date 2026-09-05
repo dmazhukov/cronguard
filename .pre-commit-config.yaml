@@ -23,6 +23,9 @@ repos:
       - id: check-case-conflict
       - id: mixed-line-ending
         args: [--fix=lf]
+      # A public repository has no second chance at a leaked credential, and
+      # ignore rules only help for paths someone remembered to list.
+      - id: detect-private-key
 
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
@@ -45,6 +48,16 @@ repos:
         language: system
         pass_filenames: false
         files: '^charts/cronguard/'
+
+      # detect-private-key only recognises PEM blocks; dotenvx keys and cloud
+      # tokens are bare strings, so a real scanner has to back it up. Skipped
+      # with a clear message when gitleaks is not installed, so the hook set
+      # stays usable on a fresh checkout.
+      - id: gitleaks
+        name: gitleaks
+        entry: bash -c 'command -v gitleaks >/dev/null || { echo "gitleaks not installed — brew install gitleaks"; exit 0; }; gitleaks protect --staged --redact --verbose'
+        language: system
+        pass_filenames: false
 
       - id: promtool-check-rules
         name: promtool check rules
