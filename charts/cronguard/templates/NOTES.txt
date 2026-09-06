@@ -43,7 +43,7 @@ ServiceMonitor enabled — Prometheus operator users should see scraping kick in
 To ship the seven default CronGuard alerts as a PrometheusRule, reinstall with --set prometheusRule.enabled=true (requires prometheus-operator CRDs).
 {{- end }}
 
-Runbooks (one per shipped alert):
+Runbooks (six for the seven alerts; the two burn-rate alerts share one):
 
   https://github.com/dmazhukov/cronguard/tree/main/docs/runbooks
 

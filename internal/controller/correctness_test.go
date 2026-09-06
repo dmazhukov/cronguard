@@ -698,6 +698,45 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 			"only the two misses that happened during and after the outage are new")
 	})
 
+	It("seeds the baseline from the checkpoint even when its first sight is an early return", func() {
+		// A successor that first meets a monitor while its CronJob is absent
+		// must seed from the checkpoint the predecessor persisted (13), not
+		// from the 0 that the early return is about to write. Otherwise the
+		// recovery reconcile re-emits the predecessor's streak — the same +18
+		// as the in-process bug, through a restart.
+		base := time.Now().Add(28 * time.Hour).Truncate(time.Minute)
+		cj, cjm := seed(base, "seedearly")
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "seedearly-mon", Namespace: ns}
+		read := func() float64 {
+			return testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "seedearly-mon"))
+		}
+		before := read()
+
+		clk := clocktesting.NewFakePassiveClock(base)
+		r1 := reconcilerOver(store, clk)
+		_, err := r1.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		clk.SetTime(base.Add(3 * time.Minute))
+		_, err = r1.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read() - before).To(BeNumerically("==", 3))
+
+		// Predecessor dies; the CronJob is gone when the successor first looks.
+		Expect(store.Delete(ctx, cj)).To(Succeed())
+		r2 := reconcilerOver(store, clk)
+		clk.SetTime(base.Add(4 * time.Minute))
+		_, err = r2.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.Create(ctx, makeCronJob(ns, "seedearly", "* * * * *"))).To(Succeed())
+		clk.SetTime(base.Add(5 * time.Minute))
+		_, err = r2.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(read()-before).To(BeNumerically("==", 5),
+			"the successor must not re-emit the three misses its predecessor already counted")
+	})
+
 	It("still counts every miss on the happy path", func() {
 		base := time.Now().Add(18 * time.Hour).Truncate(time.Minute)
 		cj, cjm := seed(base, "happy")
