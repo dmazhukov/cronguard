@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenSSF Scorecard** runs weekly and on every push to `main`, publishes to scorecard.dev and code scanning; badge in the README next to the new Go Reference badge.
+- **Release assets now include the image SBOM (`cronguard-<ver>.spdx.json`) and the Sigstore bundle for the manifests (`cronguard-<ver>-manifests.sigstore.json`)**, so verification works from the release page alone: `gh attestation verify install.yaml --bundle cronguard-<ver>-manifests.sigstore.json --owner dmazhukov`.
+- Issue chooser points security reports at the private advisory form and alert bugs at the runbooks; release notes are grouped by label via `.github/release.yml`.
+
+### Security
+
+- **Image and Helm OCI chart are signed with cosign (keyless, Sigstore public instance)** in addition to the GitHub build attestation. Verify with `cosign verify --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com ghcr.io/dmazhukov/cronguard:<tag>` (same for `ghcr.io/dmazhukov/charts/cronguard:<ver>`). The workflow verifies its own signature before the job succeeds.
+- `actions/attest-build-provenance` v3 → v4.
+
 ### Changed
 
 - **Toolchain brought current.** Kubernetes e2e runs on kind v0.33.0 with `kindest/node:v1.37.0` pinned by digest (1.33 reached end of life on 2026-06-28 and kind no longer builds it; the local script defaulted to 1.31). CI and release build with Go 1.27 to match the Docker builder. Helm 4.2.4 in chart-lint, e2e and the chart publish job (Helm 3 takes only security fixes until 2027-02-10). controller-gen v0.22.0 (the CRD changes only in its version annotation), golangci-lint v2.13.2, kubeconform v0.8.0, govulncheck pinned to v1.7.0 instead of `@latest`.

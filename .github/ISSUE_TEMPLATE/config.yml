@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/dmazhukov/cronguard/security/advisories/new
+    about: Private advisory, not a public issue. See SECURITY.md.
+  - name: Runbooks for the shipped alerts
+    url: https://github.com/dmazhukov/cronguard/tree/main/docs/runbooks
+    about: Check the runbook for the alert before filing a bug about it firing.

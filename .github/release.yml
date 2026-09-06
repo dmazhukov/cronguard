@@ -1,0 +1,19 @@
+# Categories for the auto-generated GitHub release notes (softprops uses
+# generate_release_notes). CHANGELOG.md stays the document of record; this
+# only groups the PR list on the release page instead of one flat list.
+changelog:
+  exclude:
+    labels: [auto]
+  categories:
+    - title: Breaking
+      labels: ["breaking"]
+    - title: Security
+      labels: ["security"]
+    - title: Fixed
+      labels: ["bug", "fix"]
+    - title: Added
+      labels: ["enhancement", "feature"]
+    - title: Dependencies
+      labels: ["dependencies"]
+    - title: Other
+      labels: ["*"]

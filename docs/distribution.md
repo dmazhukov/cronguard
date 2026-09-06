@@ -87,4 +87,18 @@ gh attestation verify install.yaml --owner dmazhukov
 sha256sum --check --ignore-missing checksums.txt
 ```
 
-The Helm OCI chart is not yet signed with cosign; the chart tarball's digest is what `helm pull --verify`-less installs rely on today.
+The image and the Helm OCI chart also carry cosign keyless signatures:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/dmazhukov/cronguard:0.4.0
+
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/dmazhukov/charts/cronguard:0.4.0
+```
+
+Releases before v0.5.0 have the attestation but no cosign signature.
