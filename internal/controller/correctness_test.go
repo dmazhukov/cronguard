@@ -615,12 +615,13 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 			"the baseline must still hold the last durably persisted value")
 	})
 
-	It("realigns the baseline when an early return resets the checkpoint", func() {
-		// CronJobNotFound, InvalidTimeZone and InvalidSchedule all persist
-		// MissedRuns=0. If the in-memory baseline stayed where it was, a
-		// monitor sitting on one of those paths would let the next process
-		// seed from the stale-lower 0 and re-emit a delta this one already
-		// emitted — a reduced C2, through a different door.
+	It("keeps the baseline as a high-water mark when an early return resets the checkpoint", func() {
+		// CronJobNotFound, InvalidTimeZone, InvalidSchedule and
+		// UnsatisfiableSchedule all persist MissedRuns=0 as a "not measuring"
+		// marker. The in-memory baseline must not follow it down: it records
+		// what this process already emitted, and lowering it makes the
+		// recovery reconcile re-emit the whole streak (see the spec below).
+		// The early return itself must emit nothing.
 		base := time.Now().Add(26 * time.Hour).Truncate(time.Minute)
 		cj, cjm := seed(base, "earlyret")
 		store := storeWith(cj, cjm)
@@ -649,10 +650,52 @@ var _ = Describe("burn-counter checkpoint ordering (F9)", func() {
 		r1.lastMissedMu.Lock()
 		inMemory := r1.lastMissed[key]
 		r1.lastMissedMu.Unlock()
-		Expect(inMemory).To(Equal(persisted.Status.MissedRuns),
-			"the baseline must follow the checkpoint on every path that writes it")
+		Expect(inMemory).To(BeNumerically("==", 13),
+			"the baseline must stay at the high-water mark of misses already emitted")
 		Expect(read()).To(BeNumerically("==", afterFirst),
-			"realigning the baseline must not emit anything by itself")
+			"an early return must not emit anything by itself")
+	})
+
+	It("counts only the new misses after recovering from an early return", func() {
+		// Transient paths (CronJobNotFound, InvalidTimeZone, InvalidSchedule,
+		// UnsatisfiableSchedule) persist MissedRuns=0 as a "not measuring"
+		// marker. If the in-memory baseline follows that 0, the next happy
+		// reconcile recomputes the whole streak from the unchanged
+		// LastScheduleTime latch and re-emits misses this process already
+		// counted: 10 seeded + 3 + 2 real misses must read as +5, not +18.
+		base := time.Now().Add(27 * time.Hour).Truncate(time.Minute)
+		cj, cjm := seed(base, "recover")
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "recover-mon", Namespace: ns}
+		read := func() float64 {
+			return testutil.ToFloat64(metrics.MissedRunsTotal.WithLabelValues(ns, "recover-mon"))
+		}
+		before := read()
+
+		clk := clocktesting.NewFakePassiveClock(base)
+		r := reconcilerOver(store, clk)
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		clk.SetTime(base.Add(3 * time.Minute))
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read()-before).To(BeNumerically("==", 3), "three new misses before the outage")
+
+		// The CronJob vanishes for one reconcile, then comes back.
+		Expect(store.Delete(ctx, cj)).To(Succeed())
+		clk.SetTime(base.Add(4 * time.Minute))
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.Create(ctx, makeCronJob(ns, "recover", "* * * * *"))).To(Succeed())
+		clk.SetTime(base.Add(5 * time.Minute))
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var persisted monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &persisted)).To(Succeed())
+		Expect(persisted.Status.MissedRuns).To(BeNumerically("==", 15), "the streak is recomputed from the latch")
+		Expect(read()-before).To(BeNumerically("==", 5),
+			"only the two misses that happened during and after the outage are new")
 	})
 
 	It("still counts every miss on the happy path", func() {
