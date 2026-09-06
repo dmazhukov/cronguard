@@ -512,24 +512,36 @@ func (r *CronJobMonitorReconciler) finishEarlyReturn(
 		*result = metrics.ResultRequeue
 		return res, nil
 	}
-	// Three of these paths reset Status.MissedRuns to 0 and one (suspend)
-	// deliberately freezes it. Either way the persisted checkpoint just moved,
-	// and commitMissed's invariant says the in-memory baseline must follow it
-	// — otherwise a monitor that sat on an early return for a while would let
-	// the next process seed from a stale-lower 0 and re-emit a delta this one
-	// already emitted. Same durability gate as the happy path.
+	// Four of these paths persist Status.MissedRuns = 0 as a "not measuring"
+	// marker and one (suspend) freezes it. The in-memory baseline must NOT
+	// follow a persisted 0 downwards: LastScheduleTime is a monotone latch,
+	// so the next happy reconcile recomputes the whole streak and would
+	// re-emit every miss this process already counted (measured: +18 for 5
+	// real misses across a CronJob delete/recreate). The baseline is only
+	// ever raised here; see syncMissedBaseline for the trade-off.
 	r.syncMissedBaseline(key, cjm.Status.MissedRuns)
 	*result = metrics.ResultRequeue
 	return ctrl.Result{RequeueAfter: requeueAfterError}, nil
 }
 
-// syncMissedBaseline aligns the in-memory burn-counter baseline with a value
-// that has just been persisted, without emitting anything. It is the
-// no-increment half of commitMissed, for the paths that write Status.MissedRuns
-// without observing new misses.
+// syncMissedBaseline raises the in-memory burn-counter baseline to a value
+// that has just been persisted, without emitting anything. It never lowers
+// it: within one process the baseline is the high-water mark of misses
+// already emitted, and a transient path that persists 0 has not un-happened
+// any of them. Keeping it high is what stops the recovery reconcile from
+// re-emitting the streak.
+//
+// The accepted residual is the cross-restart window: a process that dies
+// while a monitor sits on such a path leaves 0 persisted, and its successor
+// seeds from that 0 and re-emits the streak once on recovery. That is the
+// pre-v0.4.0 behaviour, bounded to one restart coinciding with an outage of
+// the monitored CronJob; the alternative (a separate persisted checkpoint)
+// is a CRD change and is deferred.
 func (r *CronJobMonitorReconciler) syncMissedBaseline(key types.NamespacedName, missed int32) {
 	r.lastMissedMu.Lock()
-	r.lastMissed[key] = missed
+	if cur, seen := r.lastMissed[key]; !seen || missed > cur {
+		r.lastMissed[key] = missed
+	}
 	r.lastMissedMu.Unlock()
 }
 
