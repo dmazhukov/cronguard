@@ -22,7 +22,7 @@ After `pre-commit install`, the configured hooks run automatically on each
   check-merge-conflict, check-case-conflict, mixed-line-ending** — generic
   hygiene from `pre-commit/pre-commit-hooks`.
 - **go-fmt, go-vet, go-mod-tidy** — Go formatting and module hygiene.
-- **golangci-lint-full** — same v2.11.4 config that runs in CI.
+- **golangci-lint-full** — same v2.13.2 config that runs in CI.
 - **helm lint charts/cronguard** — chart sanity, only when `charts/` files change.
 - **promtool check rules** — Prometheus rule validation, only when
   `config/prometheus/rules.yaml` changes.
