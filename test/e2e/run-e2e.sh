@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-cronguard-e2e}"
-NODE_IMAGE="${NODE_IMAGE:-kindest/node:v1.31.0}"
+NODE_IMAGE="${NODE_IMAGE:-kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5}"
 IMG="${IMG:-cronguard:e2e}"
 RELEASE_NS="${RELEASE_NS:-cronguard-system}"
 SAMPLE_NS="${SAMPLE_NS:-default}"
