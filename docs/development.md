@@ -22,7 +22,7 @@ After `pre-commit install`, the configured hooks run automatically on each
   check-merge-conflict, check-case-conflict, mixed-line-ending** — generic
   hygiene from `pre-commit/pre-commit-hooks`.
 - **go-fmt, go-vet, go-mod-tidy** — Go formatting and module hygiene.
-- **golangci-lint-full** — same v2.8.0 config that runs in CI.
+- **golangci-lint-full** — same v2.11.4 config that runs in CI.
 - **helm lint charts/cronguard** — chart sanity, only when `charts/` files change.
 - **promtool check rules** — Prometheus rule validation, only when
   `config/prometheus/rules.yaml` changes.
@@ -34,20 +34,26 @@ On macOS: `brew install helm yq prometheus`.
 
 Dependabot opens weekly PRs against `main` every Monday at 07:00 MSK for:
 
-- Go modules (grouped: `kubernetes`, `controller-runtime`, `observability`,
-  ungrouped for the long tail) — label `dependencies`, `go`
+- Go modules (two groups: `kubernetes` = `k8s.io/*` **and** `sigs.k8s.io/*`
+  together, because controller-runtime composes with client-go and moving one
+  without the other does not build; `observability` = prometheus + ginkgo/gomega;
+  the long tail ungrouped) — label `dependencies`, `go`
 - GitHub Actions — label `dependencies`, `github-actions`
 - Docker base image (`Dockerfile`) — label `dependencies`, `docker`
 
 Auto-merge can be enabled per-PR via `gh pr merge --rebase --auto` after CI
-passes. Branch protection on `main` enforces the same five required checks
-(`lint`, `test`, `build`, `vuln`, `analyze (go)`), so a Dependabot PR cannot
-merge if it breaks anything.
+passes. Branch protection on `main` requires seven checks — `lint`, `test`,
+`build`, `vuln`, `analyze (go)`, `manifests-clean` (which also runs
+`make verify-crd-sync`) and `chart-lint` — so a Dependabot PR cannot merge if
+it breaks anything. `e2e`, `prometheus-rules` and `gitleaks` run on every PR
+but are not required.
 
 ## Local make targets
 
 ```bash
 make manifests           # regen CRDs/RBAC from kubebuilder markers
+make sync-crd            # copy the regenerated CRD into charts/cronguard/crds/
+make verify-crd-sync     # CI gate: both CRD copies identical
 make generate            # regen DeepCopy
 make fmt vet
 make lint                # golangci-lint

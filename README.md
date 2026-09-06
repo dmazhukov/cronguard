@@ -145,14 +145,18 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) �
 
 ## Roadmap
 
-**Shipped (v0.3.x):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping. See [CHANGELOG.md](CHANGELOG.md) for details.
+**Shipped (v0.3.x–v0.4.x):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping, bounded schedule math with proven DST semantics, the missed-run floor from `CronJob.status` (ADR 0001), attested release artifacts. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 **Shipped (v0.2.x):** operator core, CRD with timezone-aware schedules (`spec.timeZone` with fallback to `CronJob.spec.timeZone`), envtest suite, raw `kubectl apply` manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
 
-**v0.4 — fleet-level SLO (planned):**
+**v0.5 — Data-Freshness SLO (planned):**
 
-- **`ClusterCronJobMonitor` resource** — cluster-scoped CRD that selects CronJobs by label/regex and applies a SLO template to all of them. Real DRY for clusters with 100+ CronJobs. Per-CronJob `CronJobMonitor` resources still work and override the cluster template when present.
-- **API promotion v1alpha1 → v1beta1** — multi-version serving on the CRD with `v1beta1` as the new storage version. Signals API stability for adopters; no breaking changes vs `v1alpha1` shape, just the maturity tier.
+- **`spec.freshness` probe** — a PromQL query that returns the timestamp of the last downstream data update, and a window. A job can exit 0 while writing nothing; this axis asks whether the *data* moved, not whether the Job ran. Surfaces as a `DataFresh` condition, a `cronguard_data_freshness_seconds` gauge and a `CronGuardDataStale` alert. It is the first outbound call the operator makes (to Prometheus), so it ships behind an ADR and is off unless a monitor asks for it.
+
+**Later, gated on adoption signal:**
+
+- **`ClusterCronJobMonitor` resource** — cluster-scoped CRD that selects CronJobs by label/regex and applies a SLO template to all of them. Per-CronJob `CronJobMonitor` resources still override the cluster template when present.
+- **API promotion v1alpha1 → v1beta1** — multi-version serving with `v1beta1` as the storage version, after the spec fields above settle.
 
 **v0.5+ — considered, not yet planned:**
 
