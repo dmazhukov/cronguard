@@ -7,7 +7,7 @@ CronGuard ships through three install paths so you can pick whichever fits your 
 Each release attaches an `install.yaml` and the CRD as standalone files:
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.3.3/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.0/install.yaml
 ```
 
 This is the lowest-dependency path — no Helm, no extra tooling. Suitable for clusters where Helm is not available or release operations are tightly controlled.
@@ -17,7 +17,7 @@ This is the lowest-dependency path — no Helm, no extra tooling. Suitable for c
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.3.3 \
+helm install cronguard cronguard/cronguard --version 0.4.0 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -29,7 +29,7 @@ Helm 3.8+ supports OCI registries natively. The chart is published alongside the
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.3.3 \
+  --version 0.4.0 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -70,7 +70,7 @@ With `replicaCount > 1` AND `serviceMonitor.enabled=true`, the chart's ServiceMo
 Helm 3 installs the CronGuard CRD on `helm install` but does NOT modify it on `helm upgrade` — this is a deliberate Helm 3 design. To upgrade the CRD when the chart bumps it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.3.3/charts/cronguard/crds/cronjobmonitors.yaml
+kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.4.0/charts/cronguard/crds/cronjobmonitors.yaml
 ```
 
 ## Verifying artifacts
@@ -79,10 +79,10 @@ Every release publishes a GitHub build attestation (SLSA provenance, signed thro
 
 ```bash
 # Container image: provenance must name this repository's release workflow
-gh attestation verify oci://ghcr.io/dmazhukov/cronguard:0.3.3 --owner dmazhukov
+gh attestation verify oci://ghcr.io/dmazhukov/cronguard:0.4.0 --owner dmazhukov
 
 # Raw manifests: download, then check the attestation and the checksum
-gh release download v0.3.3 --repo dmazhukov/cronguard --pattern 'install.yaml' --pattern 'checksums.txt'
+gh release download v0.4.0 --repo dmazhukov/cronguard --pattern 'install.yaml' --pattern 'checksums.txt'
 gh attestation verify install.yaml --owner dmazhukov
 sha256sum --check --ignore-missing checksums.txt
 ```
