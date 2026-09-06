@@ -9,9 +9,7 @@ on:
     - cron: "0 6 * * 1"
 
 permissions:
-  actions: read
   contents: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.ref }}
@@ -24,6 +22,10 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # upload results to code scanning
     strategy:
       matrix:
         language: [go]
