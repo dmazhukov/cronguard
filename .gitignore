@@ -40,9 +40,9 @@ kubeconfig
 # is machine-local, is not versioned, and does not survive a re-clone, so the
 # protection would silently disappear on the next machine.
 .env
-.env.local
-.env.keys
+.env.*
 *.key
+*.pem
 test/loadtest/
 
 # Claude Code working artifacts (kept local only)
