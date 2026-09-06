@@ -73,6 +73,18 @@ Helm 3 installs the CronGuard CRD on `helm install` but does NOT modify it on `h
 kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.3.3/charts/cronguard/crds/cronjobmonitors.yaml
 ```
 
-## Verifying signatures (future)
+## Verifying artifacts
 
-Phase 3 may add cosign signing for the OCI artifacts. Until then, integrity rests on GitHub's `GITHUB_TOKEN` push provenance.
+Every release publishes a GitHub build attestation (SLSA provenance, signed through Sigstore with the workflow's OIDC identity) for the container image and for the raw manifests, an SBOM attached to the image, and a `checksums.txt` on the GitHub release.
+
+```bash
+# Container image: provenance must name this repository's release workflow
+gh attestation verify oci://ghcr.io/dmazhukov/cronguard:0.3.3 --owner dmazhukov
+
+# Raw manifests: download, then check the attestation and the checksum
+gh release download v0.3.3 --repo dmazhukov/cronguard --pattern 'install.yaml' --pattern 'checksums.txt'
+gh attestation verify install.yaml --owner dmazhukov
+sha256sum --check --ignore-missing checksums.txt
+```
+
+The Helm OCI chart is not yet signed with cosign; the chart tarball's digest is what `helm pull --verify`-less installs rely on today.

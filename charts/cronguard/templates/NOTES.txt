@@ -40,7 +40,7 @@ ServiceMonitor enabled — Prometheus operator users should see scraping kick in
 {{- end }}
 {{- if not .Values.prometheusRule.enabled }}
 
-To ship the five default CronGuard alerts as a PrometheusRule, reinstall with --set prometheusRule.enabled=true (requires prometheus-operator CRDs).
+To ship the seven default CronGuard alerts as a PrometheusRule, reinstall with --set prometheusRule.enabled=true (requires prometheus-operator CRDs).
 {{- end }}
 
 Runbooks (one per shipped alert):
@@ -50,9 +50,10 @@ Runbooks (one per shipped alert):
 CRD upgrade between chart versions (Helm 3 ignores crds/ on `helm upgrade` by design):
 
   kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v{{ .Chart.AppVersion }}/charts/cronguard/crds/cronjobmonitors.yaml
-{{- if gt (int .Values.replicaCount) 1 }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.serviceMonitor.enabled) }}
 
-NOTE: replicaCount > 1 is set. Both replicas serve /metrics with identical labels —
-Prometheus scraping both will see doubled gauges. Scrape only the leader (label-selector
-pattern not yet a chart value), or accept the doubling.
+NOTE: replicaCount > 1 is set without the chart's ServiceMonitor. Both replicas serve
+/metrics with identical labels, so a scrape config that targets the Service will see
+doubled gauges. Keep only pods labelled cronguard.io/role=leader (the ServiceMonitor
+does this via a relabeling), or accept the doubling.
 {{- end }}
