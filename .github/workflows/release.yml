@@ -293,6 +293,8 @@ jobs:
               s#(releases/download/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
               s#(github\.com/dmazhukov/cronguard/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
               s#(raw\.githubusercontent\.com/dmazhukov/cronguard/v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+              s#(ghcr\.io/dmazhukov/cronguard:)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
+              s#(gh release download v)[0-9]+\.[0-9]+\.[0-9]+#\1${NEW_VER}#g
             " "$f"
           done
 
