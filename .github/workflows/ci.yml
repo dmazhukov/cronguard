@@ -184,3 +184,18 @@ jobs:
             --set replicaCount=2 \
             --set podDisruptionBudget.enabled=true \
             | kubeconform -strict -summary -ignore-missing-schemas -
+
+  # Backstop for the pre-commit gitleaks hook: hooks are opt-in, can be
+  # bypassed with --no-verify, and fork PRs never run them. Scans the commits
+  # of the push or pull request for bare-string secrets (dotenvx keys, cloud
+  # tokens) that detect-private-key does not recognise.
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
