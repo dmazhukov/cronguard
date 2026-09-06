@@ -6,6 +6,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/dmazhukov/cronguard)](https://goreportcard.com/report/github.com/dmazhukov/cronguard)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/dmazhukov/cronguard)](go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dmazhukov/cronguard.svg)](https://pkg.go.dev/github.com/dmazhukov/cronguard)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dmazhukov/cronguard/badge)](https://scorecard.dev/viewer/?uri=github.com/dmazhukov/cronguard)
 
 **SLO-style observability for Kubernetes CronJobs.**
 
