@@ -145,7 +145,7 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) �
 
 ## Roadmap
 
-**Shipped (v0.3.x–v0.4.x):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping, bounded schedule math with proven DST semantics, the missed-run floor from `CronJob.status` (ADR 0001), attested release artifacts. See [CHANGELOG.md](CHANGELOG.md) for details.
+**Shipped (v0.3.x, v0.4.0):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping, bounded schedule math with proven DST semantics, the missed-run floor from `CronJob.status` (ADR 0001), attested release artifacts. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 **Shipped (v0.2.x):** operator core, CRD with timezone-aware schedules (`spec.timeZone` with fallback to `CronJob.spec.timeZone`), envtest suite, raw `kubectl apply` manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
 
@@ -158,7 +158,7 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) �
 - **`ClusterCronJobMonitor` resource** — cluster-scoped CRD that selects CronJobs by label/regex and applies a SLO template to all of them. Per-CronJob `CronJobMonitor` resources still override the cluster template when present.
 - **API promotion v1alpha1 → v1beta1** — multi-version serving with `v1beta1` as the storage version, after the spec fields above settle.
 
-**v0.5+ — considered, not yet planned:**
+**Considered, not yet planned:**
 
 - Operator self-observability metrics (reconcile queue depth, leader-election state, status-patch conflicts)
 - Backfill of execution history from existing Jobs at first install

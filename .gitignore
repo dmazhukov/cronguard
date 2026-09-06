@@ -41,6 +41,8 @@ kubeconfig
 # protection would silently disappear on the next machine.
 .env
 .env.*
+*.env
+!.env.example
 *.key
 *.pem
 test/loadtest/

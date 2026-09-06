@@ -132,6 +132,14 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, fmt.Errorf("get CronJobMonitor: %w", err)
 	}
 	log.V(1).Info("reconciling", "cronJobRef", cjm.Spec.CronJobRef.Name, "generation", cjm.Generation)
+	// Seed the burn-counter baseline from the persisted checkpoint at the
+	// moment it is read, before any path below rewrites Status.MissedRuns.
+	// The early-return paths persist 0 as a "not measuring" marker; a process
+	// whose first sight of this key lands on one of them would otherwise seed
+	// from that 0 and re-emit the predecessor's whole streak on recovery.
+	// syncMissedBaseline only raises, so this is a no-op for a key already
+	// tracked by this process.
+	r.syncMissedBaseline(req.NamespacedName, cjm.Status.MissedRuns)
 
 	// Snapshot prior axis statuses for transition-event detection.
 	priorReconciled := snapshotCondition(cjm.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
@@ -531,12 +539,11 @@ func (r *CronJobMonitorReconciler) finishEarlyReturn(
 // any of them. Keeping it high is what stops the recovery reconcile from
 // re-emitting the streak.
 //
-// The accepted residual is the cross-restart window: a process that dies
-// while a monitor sits on such a path leaves 0 persisted, and its successor
-// seeds from that 0 and re-emits the streak once on recovery. That is the
-// pre-v0.4.0 behaviour, bounded to one restart coinciding with an outage of
-// the monitored CronJob; the alternative (a separate persisted checkpoint)
-// is a CRD change and is deferred.
+// The residual is narrow: a process that dies while a monitor already sits
+// on such a path has left 0 persisted, so its successor has no checkpoint to
+// seed from and re-emits the streak once on recovery. Closing that needs a
+// checkpoint persisted separately from the streak gauge — a CRD change, not
+// taken here.
 func (r *CronJobMonitorReconciler) syncMissedBaseline(key types.NamespacedName, missed int32) {
 	r.lastMissedMu.Lock()
 	if cur, seen := r.lastMissed[key]; !seen || missed > cur {
@@ -667,8 +674,11 @@ func (r *CronJobMonitorReconciler) emitTransitionEvents(
 // durably persisted, because that field is the checkpoint the C2 seeding path
 // reads back on the first sight of a key after a restart or leader failover.
 //
-// The invariant is: lastMissed[key] never leads the last persisted value of
-// Status.MissedRuns. Break it and a process that dies with an unpersisted
+// The invariant is: lastMissed[key] never leads the value the last happy-path
+// write persisted in Status.MissedRuns. (The 0 that the transient paths
+// persist is a "not measuring" marker, not a checkpoint, and the baseline
+// deliberately stays above it — see syncMissedBaseline.) Break the invariant
+// and a process that dies with an unpersisted
 // advance lets its successor seed from the stale-lower value and re-emit a
 // delta the predecessor already emitted — Prometheus reads the restart as a
 // counter reset, so increase() over the window sums both. That is C2's failure
