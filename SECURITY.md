@@ -23,4 +23,4 @@ I aim to acknowledge reports within one week and publish a fix within four weeks
 
 ## Supported versions
 
-Only the latest minor release line receives security updates.
+Only the latest minor release line receives security updates — today that is `0.4.x`. A fix ships as a new patch release with a rebuilt image; older lines are not patched. Release artifacts carry GitHub build attestations and a `checksums.txt`; see [docs/distribution.md](docs/distribution.md#verifying-artifacts) for the verification commands.
