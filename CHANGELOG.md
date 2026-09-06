@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `golang.org/x/mod` 0.37.0 → 0.40.0 (GO-2026-6179, GO-2026-6180 in `sumdb`; indirect, not reachable from operator code, flagged by Scorecard's OSV check). `codeql.yml` grants `security-events: write` to its one job instead of the whole workflow.
 - **Image and Helm OCI chart are signed with cosign (keyless, Sigstore public instance)** in addition to the GitHub build attestation. Verify with `cosign verify --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com ghcr.io/dmazhukov/cronguard:<tag>` (same for `ghcr.io/dmazhukov/charts/cronguard:<ver>`). The workflow verifies its own signature before the job succeeds.
 - `actions/attest-build-provenance` v3 → v4.
 
