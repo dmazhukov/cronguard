@@ -49,6 +49,12 @@ resources:
 
 metrics:
   port: 8080
+  # Serve /metrics over TLS with a self-signed certificate generated at
+  # startup (--metrics-secure). It stops passive capture of the scrape and
+  # authenticates neither side, so limit who can reach it with networkPolicy.
+  # The chart's ServiceMonitor switches to https without certificate
+  # verification.
+  secure: false
 healthProbe:
   port: 8081
 

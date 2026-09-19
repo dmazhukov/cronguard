@@ -54,6 +54,9 @@ spec:
                    predates this value renders it empty, and an empty
                    flag value stops the binary at startup. */}}
             - --max-concurrent-reconciles={{ .Values.maxConcurrentReconciles | default 1 }}
+            {{- if dig "secure" false (.Values.metrics | default dict) }}
+            - --metrics-secure
+            {{- end }}
             {{- with .Values.namespace }}
             - --namespace={{ . }}
             {{- end }}

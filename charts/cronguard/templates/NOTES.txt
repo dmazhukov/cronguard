@@ -32,7 +32,11 @@ Then watch its status:
 Metrics endpoint:
 
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $fullname }}-metrics {{ .Values.metrics.port }}:{{ .Values.metrics.port }}
+{{- if dig "secure" false (.Values.metrics | default dict) }}
+  curl -sk https://localhost:{{ .Values.metrics.port }}/metrics | grep cronguard_
+{{- else }}
   curl localhost:{{ .Values.metrics.port }}/metrics | grep cronguard_
+{{- end }}
 
 {{- if .Values.serviceMonitor.enabled }}
 

@@ -41,10 +41,11 @@ This is the platform-level alert. Every other CronGuard alert assumes that the o
 5. Probe the metrics endpoint directly — does the pod itself serve metrics?
    ```bash
    kubectl -n cronguard-system port-forward svc/cronguard-metrics 8080:8080 &
-   curl -sf http://localhost:8080/metrics | head -20
+   curl -sf http://localhost:8080/metrics | head -20    # default
+   curl -skf https://localhost:8080/metrics | head -20  # operator started with --metrics-secure
    kill %1
    ```
-   If this works, the operator is healthy and the problem is between Prometheus and the Service.
+   If either prints metrics, the operator is healthy and the problem is between Prometheus and the Service. The one that worked is the scheme to scrape with: a plain-HTTP scrape of an operator running with `--metrics-secure` (`metrics.secure`) gets 400.
 6. ServiceMonitor sanity (Prometheus Operator deployments):
    ```bash
    kubectl get servicemonitors -A -l app.kubernetes.io/part-of=cronguard
@@ -60,6 +61,7 @@ This is the platform-level alert. Every other CronGuard alert assumes that the o
 - ServiceMonitor / Prometheus scrape config drifted — wrong selector, wrong port, wrong namespace.
 - NetworkPolicy in `cronguard-system` is blocking ingress from the Prometheus namespace.
 - Operator listening on the wrong port (Helm-values drift, e.g., `metrics.port` changed).
+- Scheme mismatch: the operator runs with `--metrics-secure` and the scrape config is still `http`, or the reverse. The chart's ServiceMonitor follows `metrics.secure`; a hand-written scrape config or `config/observability/servicemonitor.yaml` does not.
 - Prometheus itself is down (rare — usually paged separately, but worth ruling out).
 
 ## Remediation

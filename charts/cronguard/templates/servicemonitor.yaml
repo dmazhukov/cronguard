@@ -19,6 +19,12 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
+      {{- if dig "secure" false (.Values.metrics | default dict) }}
+      # Self-signed, generated when the operator starts: nothing to verify against.
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
+      {{- end }}
       interval: {{ .Values.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
       honorLabels: {{ .Values.serviceMonitor.honorLabels }}

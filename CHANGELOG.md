@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--metrics-secure` (chart value `metrics.secure`, default off): `/metrics` over TLS.** The certificate is self-signed and generated in memory at startup, so nothing is mounted and the read-only root filesystem stays as it is; the chart's `ServiceMonitor` switches to `https` without certificate verification. It encrypts the scrape and authenticates neither side: the operator does not check the scraper (controller-runtime's filter for that pulls in `k8s.io/apiserver` and would grow the binary from 44 to 72 MB), and the scraper cannot check a self-signed certificate. It stops passive capture, not an attacker on the path; who may scrape is still up to `networkPolicy`.
 - **`config/observability/`**: a kustomize overlay with the `PrometheusRule` and a `ServiceMonitor` for the metrics Service, applied next to `install.yaml` on clusters with the prometheus-operator CRDs. The release's `install.yaml` carries neither, which `docs/distribution.md` now says outright. `config/network-policy/` now builds into `cronguard-system` instead of the scaffold's `system` placeholder. CI builds the kustomize output and renders the chart against the prometheus-operator schemas, pinned to one commit of the CRD catalog; before, kubeconform skipped every custom resource, so a typo in the chart's ServiceMonitor or PrometheusRule would have shipped.
 
 ## [0.4.2] - 2026-09-19

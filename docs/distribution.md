@@ -79,7 +79,8 @@ The Helm chart sets these from values; with the raw manifests, edit the `args` o
 
 | Flag | Default | Chart value | What it does |
 |---|---|---|---|
-| `--metrics-bind-address` | `:8080` | `metrics.port` | Where `/metrics` listens, plain HTTP. |
+| `--metrics-bind-address` | `:8080` | `metrics.port` | Where `/metrics` listens, plain HTTP unless `--metrics-secure`. |
+| `--metrics-secure` | `false` | `metrics.secure` | Serve `/metrics` over TLS with a self-signed certificate generated at startup. It stops passive capture of the scrape and authenticates neither side, since the scraper cannot verify a self-signed certificate: who may scrape is up to a NetworkPolicy. Scrape with `https` and certificate verification off; `config/observability/servicemonitor.yaml` has the lines to uncomment. |
 | `--health-probe-bind-address` | `:8081` | `healthProbe.port` | Where `/healthz` and `/readyz` listen. |
 | `--leader-elect` | `true` | `leaderElection.enabled` | Leader election; required for more than one replica. |
 | `--namespace` | empty | `namespace` | Watch one namespace instead of the whole cluster. |

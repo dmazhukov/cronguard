@@ -7,7 +7,7 @@ resources:
 # metrics_auth_role/_binding are NOT included. They grant cluster-wide
 # create on tokenreviews and subjectaccessreviews for an authn/authz filter
 # on the metrics endpoint — and cmd/main.go installs no such filter
-# (metricsserver.Options carries only BindAddress). Shipping the grant for a
+# (--metrics-secure adds TLS, no FilterProvider). Shipping the grant for a
 # feature that does not exist hands the operator a privilege it cannot use.
 # Re-add both files in the same commit that wires up SecureServing and
 # FilterProvider, not before.
