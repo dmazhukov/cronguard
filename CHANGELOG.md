@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Dependencies:** `gitleaks/gitleaks-action` v2.3.9 → v3.0.0, which only moves the action from Node 20 to Node 24 (GitHub dropped Node 20 from hosted runners on 2026-09-16 per the action's release notes; this repository already forced Node 24 through `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`, so v3 removes the reliance on that override). `github/codeql-action` 4.38.0 at all four call sites at once, now kept together by a Dependabot group — split into separate PRs the pins disagreed and analysis failed in each. Refreshed base-image digests for `golang:1.27.1` and `static-debian13:nonroot`; ginkgo 2.32.1, gomega 1.43.0.
 - `golang.org/x/mod` 0.37.0 → 0.40.0 (GO-2026-6179, GO-2026-6180 in `sumdb`; indirect, not reachable from operator code, flagged by Scorecard's OSV check). `codeql.yml` grants `security-events: write` to its one job instead of the whole workflow.
 - **Image and Helm OCI chart are signed with cosign (keyless, Sigstore public instance)** in addition to the GitHub build attestation. Verify with `cosign verify --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com ghcr.io/dmazhukov/cronguard:<tag>` (same for `ghcr.io/dmazhukov/charts/cronguard:<ver>`). The workflow verifies its own signature before the job succeeds.
 - `actions/attest-build-provenance` v3 → v4.
