@@ -2,8 +2,8 @@ apiVersion: v2
 name: cronguard
 description: SLO-style observability operator for Kubernetes CronJobs
 type: application
-version: 0.4.0
-appVersion: "0.4.0"
+version: 0.4.1
+appVersion: "0.4.1"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/dmazhukov/cronguard
 sources:
@@ -25,15 +25,17 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/changes: |
     - kind: fixed
-      description: Prev() no longer hangs the reconcile worker on an impossible schedule; unsatisfiable schedules report UnsatisfiableSchedule instead of healthy
+      description: A Job seen running and then failing is counted as a failure; ConsecutiveFailures and ExecutionHealthy missed nearly every real failure before
     - kind: fixed
-      description: Runs during operator downtime are no longer charged as missed (floor from CronJob.status.lastScheduleTime, ADR 0001)
+      description: UnsatisfiableSchedule means the schedule never fires, not that its next slot is more than five years away
     - kind: fixed
-      description: cronguard_running_jobs drops Jobs that no longer exist; burn counter no longer double-counts across failed status writes or early returns
+      description: next_expected_timestamp_seconds is absent while the operator is not measuring, instead of 0 or a stale value
+    - kind: added
+      description: --max-concurrent-reconciles and the maxConcurrentReconciles chart value
     - kind: changed
-      description: "@every schedules are rejected wherever they come from (breaking, pages CronGuardNotReady)"
+      description: CronGuardOperatorDown uses the namespace matcher only with the chart's ServiceMonitor
     - kind: security
-      description: Release artifacts carry SBOM, SLSA provenance and GitHub attestations; workflow actions pinned to commit SHAs
+      description: Image and OCI chart signed with cosign; SBOM and Sigstore bundle attached to the release
   artifacthub.io/links: |
     - name: GitHub
       url: https://github.com/dmazhukov/cronguard
