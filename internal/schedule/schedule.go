@@ -219,13 +219,18 @@ func (s *Schedule) noSlotInRange(loc *time.Location, x, at time.Time) bool {
 // reachFrom returns a conservative lower bound on how far a single Next call
 // from x can see. robfig's limit is the end of year(x)+5, measured after
 // converting x into the schedule's own zone — except when that zone is
-// time.Local, where it uses x's own zone instead. Those can disagree by up to
-// a day at a year boundary, so the bound stops at the start of 31 December
-// rather than its end. Under-approximating costs at most one extra ladder
-// step; over-approximating would let the ladder declare a range empty while a
-// slot still sits in it.
+// time.Local, where it uses x's own zone instead. Around New Year those two
+// zones can name different years, so for time.Local the earlier of the two
+// years is used, and in every case the bound stops at the start of 31
+// December rather than its end. Under-approximating costs at most one extra
+// ladder step; over-approximating would let the ladder declare a range empty
+// while a slot still sits in it.
 func reachFrom(x time.Time, loc *time.Location) time.Time {
-	return time.Date(x.In(loc).Year()+robfigReachYears, 12, 31, 0, 0, 0, 0, loc)
+	year := x.In(loc).Year()
+	if loc == time.Local && x.Year() < year {
+		year = x.Year()
+	}
+	return time.Date(year+robfigReachYears, 12, 31, 0, 0, 0, 0, loc)
 }
 
 // Prev returns the most recent scheduled time at or before `at`, and whether

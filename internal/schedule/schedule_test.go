@@ -517,3 +517,29 @@ func TestNextSlotMatchesNextWithinReach(t *testing.T) {
 		}
 	}
 }
+
+// robfig measures its five-year reach in the time's own zone when the
+// schedule's zone is time.Local, not in time.Local itself. Near New Year the
+// two can name different years, and a reach bound computed in the wrong one
+// overshoots: the ladder then skips a real slot. Kiritimati (UTC+14) against
+// a time in UTC-12 is the widest split.
+func TestNextSlotLocalZoneAtNewYear(t *testing.T) {
+	kiri, err := time.LoadLocation("Pacific/Kiritimati")
+	if err != nil {
+		t.Skip("tzdata missing:", err)
+	}
+	saved := time.Local
+	time.Local = kiri
+	t.Cleanup(func() { time.Local = saved })
+
+	s, err := schedule.ParseInLocation("CRON_TZ=Local 0 0 29 2 *", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2098, 12, 31, 20, 0, 0, 0, time.FixedZone("UTC-12", -12*3600))
+	got, ok := s.NextSlot(from)
+	want := time.Date(2104, 2, 29, 0, 0, 0, 0, kiri)
+	if !ok || !got.Equal(want) {
+		t.Fatalf("NextSlot(%v) = %v, %v; want %v", from, got, ok, want)
+	}
+}

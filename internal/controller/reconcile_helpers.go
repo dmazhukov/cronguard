@@ -38,23 +38,25 @@ func listOwnedJobs(ctx context.Context, c client.Client, cj *batchv1.CronJob) ([
 	return owned, nil
 }
 
+// jobPhase reads a Job's outcome from its conditions only. The Job controller
+// sets them once and never removes them: Complete (preceded by
+// SuccessCriteriaMet) and Failed (preceded by FailureTarget) are final, so the
+// target conditions already decide the outcome. The counters are not: between
+// a failed attempt and its retry a Job reads {active: 0, failed: 1}, and a Job
+// with completions: 3 reads {succeeded: 1, active: 2} after its first success.
+// history.Merge makes a terminal record permanent, so a phase guessed from
+// counters would latch a failure that a retry then recovers.
 func jobPhase(job *batchv1.Job) monitoringv1alpha1.ExecutionPhase {
 	for _, cond := range job.Status.Conditions {
 		if cond.Status != corev1.ConditionTrue {
 			continue
 		}
 		switch cond.Type {
-		case batchv1.JobComplete:
+		case batchv1.JobComplete, batchv1.JobSuccessCriteriaMet:
 			return monitoringv1alpha1.ExecutionPhaseSucceeded
-		case batchv1.JobFailed:
+		case batchv1.JobFailed, batchv1.JobFailureTarget:
 			return monitoringv1alpha1.ExecutionPhaseFailed
 		}
-	}
-	if job.Status.Succeeded > 0 {
-		return monitoringv1alpha1.ExecutionPhaseSucceeded
-	}
-	if job.Status.Failed > 0 && job.Status.Active == 0 {
-		return monitoringv1alpha1.ExecutionPhaseFailed
 	}
 	return monitoringv1alpha1.ExecutionPhaseRunning
 }

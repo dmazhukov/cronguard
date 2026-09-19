@@ -105,6 +105,13 @@ if [[ "$tz" != "Asia/Singapore" || -z "$next" ]]; then
 fi
 
 log "A Job seen running and then failed counts as a failure"
+# The scenario is only meaningful if the operator saw the Job running first.
+if ! kubectl -n "$SAMPLE_NS" wait cronjobmonitor/e2e-fail-mon --timeout=150s \
+    --for=jsonpath='{.status.recentExecutions[0].phase}'=Running; then
+  log "e2e-fail-mon never recorded a running Job"
+  kubectl -n "$SAMPLE_NS" get cronjobmonitor e2e-fail-mon -o yaml
+  exit 1
+fi
 wait_reason e2e-fail-mon ExecutionHealthy ConsecutiveFailures 240s
 
 log "Missed runs accumulate"
@@ -116,9 +123,16 @@ wait_reason e2e-missed-mon ScheduleHealthy ScheduleMissed 180s
 # (EndpointSlice lag, stale pod phase) the nightly runs used to hit.
 METRICS_URL="http://cronguard-metrics.${RELEASE_NS}.svc:8080/metrics"
 scrape() {
-  kubectl -n "$SAMPLE_NS" run "e2e-scrape-$RANDOM" --image=busybox:1.36 --restart=Never --rm -i --quiet \
+  # A pod that runs to completion, then its logs: `kubectl run --rm -i`
+  # attaches to a container that may already be writing and can lose the
+  # start of the output.
+  local pod="e2e-scrape-$RANDOM"
+  kubectl -n "$SAMPLE_NS" run "$pod" --image=busybox:1.36 --restart=Never \
     --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"s","image":"busybox:1.36","command":["wget","-qO-","'"$METRICS_URL"'"],"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}' \
-    2>/dev/null
+    >/dev/null
+  kubectl -n "$SAMPLE_NS" wait "pod/$pod" --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s >/dev/null || true
+  kubectl -n "$SAMPLE_NS" logs "pod/$pod" 2>/dev/null
+  kubectl -n "$SAMPLE_NS" delete "pod/$pod" --wait=false >/dev/null 2>&1 || true
 }
 
 # Every family the operator can emit. last_duration appears once a Job
@@ -159,6 +173,8 @@ if [[ ${#missing[@]} -ne 0 ]]; then
 fi
 log "All ${#REQUIRED[@]} metric families present via the Service ($(wc -l <<<"$metrics") lines)"
 
+grep -q '^cronguard_condition{[^}]*name="e2e-feb30-mon"' <<<"$metrics" \
+  || { log "no series at all for e2e-feb30-mon; the absence check below would pass for nothing"; exit 1; }
 if grep -q '^cronguard_next_expected_timestamp_seconds{[^}]*name="e2e-feb30-mon"' <<<"$metrics"; then
   log "next_expected is published for a schedule that never fires"
   exit 1
