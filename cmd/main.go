@@ -35,6 +35,15 @@ import (
 	"github.com/dmazhukov/cronguard/internal/metrics"
 )
 
+// metricsOptions serves /metrics over plain HTTP or, with secure, over TLS
+// with a certificate generated in memory: nothing to mount, nothing written to
+// the read-only root filesystem, and nothing a scraper can verify. It stops
+// passive capture and authenticates neither side: controller-runtime's filter
+// for the scraper pulls in k8s.io/apiserver and grows the binary 44 → 72 MB.
+func metricsOptions(addr string, secure bool) metricsserver.Options {
+	return metricsserver.Options{BindAddress: addr, SecureServing: secure}
+}
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
@@ -58,12 +67,15 @@ func main() {
 		enableLeaderElection bool
 		namespace            string
 		workers              int
+		metricsSecure        bool
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager.")
 	flag.StringVar(&namespace, "namespace", "", "Restrict watch to a single namespace. Empty means cluster-wide.")
+	flag.BoolVar(&metricsSecure, "metrics-secure", false,
+		"Serve /metrics over HTTPS with a self-signed certificate. Encryption only: it does not authenticate the scraper.")
 	flag.IntVar(&workers, "max-concurrent-reconciles", 1,
 		"Number of CronJobMonitors reconciled in parallel. Raise it when one slow monitor would otherwise delay the rest.")
 	opts := zap.Options{Development: false}
@@ -78,7 +90,7 @@ func main() {
 
 	mgrOpts := ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		Metrics:                metricsOptions(metricsAddr, metricsSecure),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "cronguard.monitoring.cronguard.io",

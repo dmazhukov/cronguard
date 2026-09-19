@@ -231,6 +231,7 @@ jobs:
             --set replicaCount=2 \
             --set podDisruptionBudget.enabled=true \
             --set networkPolicy.enabled=true \
+            --set metrics.secure=true \
             --set-json 'networkPolicy.metricsFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}}]' \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRD_SCHEMAS" -
 

@@ -65,6 +65,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `resources.limits.memory` | string | `256Mi` | Container memory limit. |
 | `maxConcurrentReconciles` | integer | `1` | Monitors reconciled in parallel (`--max-concurrent-reconciles`). |
 | `metrics.port` | integer | `8080` | Prometheus `/metrics` listener port. |
+| `metrics.secure` | boolean | `false` | Serve `/metrics` over TLS with a self-signed certificate generated at startup (`--metrics-secure`). It stops passive capture of the scrape and authenticates neither side (the scraper cannot verify a self-signed certificate): pair it with `networkPolicy`. The chart's `ServiceMonitor` switches to `https` without certificate verification. |
 | `healthProbe.port` | integer | `8081` | Liveness and readiness probe port. |
 | `serviceMonitor.enabled` | boolean | `false` | Render a `ServiceMonitor` for prometheus-operator. |
 | `serviceMonitor.namespace` | string | `""` | Namespace for the `ServiceMonitor`. Empty defaults to release namespace. |

@@ -55,7 +55,10 @@
     "maxConcurrentReconciles": {"type": "integer", "minimum": 1, "description": "Monitors reconciled in parallel."},
     "metrics": {
       "type": "object",
-      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "secure": {"type": "boolean"}
+      }
     },
     "healthProbe": {
       "type": "object",

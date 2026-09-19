@@ -8,11 +8,11 @@ metadata:
   name: controller-manager-metrics-service
   namespace: system
 spec:
-  # Named for what it is. The manager serves /metrics over plain HTTP —
-  # cmd/main.go passes only BindAddress to metricsserver.Options, with no
-  # SecureServing and no authn/authz filter — so a port named "https" made
-  # every ServiceMonitor written against these manifests wrong. Protect the
-  # endpoint with a NetworkPolicy or the mesh until TLS is wired up.
+  # Named for what it is, not for a scheme: the manager serves /metrics over
+  # plain HTTP unless started with --metrics-secure, and never with an
+  # authn/authz filter, so a port named "https" made every ServiceMonitor
+  # written against these manifests wrong. Limit who can reach it with a
+  # NetworkPolicy (config/network-policy/).
   ports:
   - name: metrics
     port: 8080

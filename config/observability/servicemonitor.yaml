@@ -1,6 +1,7 @@
 # Scrape config for the raw-manifest path, which otherwise ships no way for
-# Prometheus to find the operator. The metrics endpoint is plain HTTP without
-# authentication, so pair this with config/network-policy/.
+# Prometheus to find the operator. The metrics endpoint authenticates no one
+# (plain HTTP by default, TLS with --metrics-secure), so pair this with
+# config/network-policy/.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -33,6 +34,11 @@ spec:
           regex: (.+)
           targetLabel: namespace
           replacement: $1
+      # With the operator started with --metrics-secure; its certificate is
+      # self-signed and generated at startup, so there is nothing to verify:
+      # scheme: https
+      # tlsConfig:
+      #   insecureSkipVerify: true
       # With more than one replica, keep only the leader
       # (cronguard.io/role: leader) or Prometheus double-counts every gauge:
       # relabelings:
