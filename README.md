@@ -101,7 +101,7 @@ The per-CronJob gauge family is labelled `{namespace, name, cronjob}` (`name` is
 | `cronguard_last_failure_timestamp_seconds` | gauge | Unix time of last failed Job |
 | `cronguard_last_schedule_timestamp_seconds` | gauge | Unix time of last Job start (success or failure) |
 | `cronguard_running_jobs` | gauge | Currently-running Jobs owned by the watched CronJob |
-| `cronguard_next_expected_timestamp_seconds` | gauge | Unix time of next expected run |
+| `cronguard_next_expected_timestamp_seconds` | gauge | Unix time of next expected run; absent when the schedule has no upcoming slot (`UnsatisfiableSchedule`) |
 | `cronguard_consecutive_failures` | gauge | Consecutive failed runs |
 | `cronguard_missed_runs` | gauge | Consecutive missed runs |
 | `cronguard_schedule_drift_seconds` | gauge | Drift of most recent run |

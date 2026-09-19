@@ -1105,3 +1105,112 @@ var _ = Describe("Running Job that fails without completionTime", func() {
 		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonConsecutiveFailures))
 	})
 })
+
+// UnsatisfiableSchedule must mean "never", not "not within robfig's five-year
+// reach". From March 2096, "0 0 29 2 *" has no slot until 2104-02-29 because
+// 2100 is not a leap year; a single Next gives up, and the controller used to
+// read that as "will never run" and page for 34 months.
+var _ = Describe("sparse but satisfiable schedule beyond robfig's reach", func() {
+	const ns = "cg-sparse"
+
+	It("reports the real next slot instead of UnsatisfiableSchedule", func() {
+		now := time.Date(2096, 3, 1, 12, 0, 0, 0, time.UTC)
+		cj := makeCronJob(ns, "leap", "0 0 29 2 *")
+		cjm := monitorFor(ns, "leap-mon", "leap", now.Add(-time.Hour))
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "leap-mon", Namespace: ns}
+
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		rec := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+		Expect(rec).NotTo(BeNil())
+		Expect(rec.Reason).NotTo(Equal(monitoringv1alpha1.ReasonUnsatisfiableSchedule))
+		Expect(rec.Status).To(Equal(metav1.ConditionTrue))
+		Expect(got.Status.NextExpectedTime).NotTo(BeNil())
+		Expect(got.Status.NextExpectedTime.Time.Equal(time.Date(2104, 2, 29, 0, 0, 0, 0, time.UTC))).To(BeTrue(),
+			"next slot is %v", got.Status.NextExpectedTime.Time)
+	})
+})
+
+// The drift block clears drift and the newest record's annotations when the
+// run it would describe belongs to no slot within the lookback horizon. The
+// schedule package covers its half; this pins the controller's half.
+var _ = Describe("drift that cannot be resolved", func() {
+	const ns = "cg-drift-clear"
+
+	It("clears the published drift and the newest record's annotations", func() {
+		now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+		ancient := metav1.NewTime(time.Date(5, 1, 1, 0, 0, 0, 0, time.UTC))
+		expected := metav1.NewTime(ancient.Add(-time.Minute))
+		drift := int32(60)
+		cj := makeCronJob(ns, "old", "0 * * * *")
+		cjm := monitorFor(ns, "old-mon", "old", now.Add(-time.Hour))
+		cjm.Status = monitoringv1alpha1.CronJobMonitorStatus{
+			LastScheduleTime:     &ancient,
+			ScheduleDriftSeconds: 42,
+			RecentExecutions: []monitoringv1alpha1.ExecutionRecord{{
+				JobName: "old-1", StartTime: ancient, EndTime: &ancient,
+				Phase:             monitoringv1alpha1.ExecutionPhaseSucceeded,
+				ExpectedStartTime: &expected, DriftSeconds: &drift,
+			}},
+		}
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "old-mon", Namespace: ns}
+
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		Expect(got.Status.ScheduleDriftSeconds).To(BeNumerically("==", 0), "a stale drift must not be republished")
+		Expect(got.Status.RecentExecutions[0].ExpectedStartTime).To(BeNil())
+		Expect(got.Status.RecentExecutions[0].DriftSeconds).To(BeNil())
+	})
+})
+
+// kube-state-metrics crashed its whole process on CronJob schedules one
+// parser accepted and another rejected (kubernetes/kube-state-metrics#2978).
+// CronGuard parses with the apiserver's own robfig parser, so the divergence
+// it can meet is its own: @every, which it rejects on purpose, and schedules
+// that parse but never fire. Every one of these must end in a condition, not
+// a panic, and never in a green row for a job that cannot run.
+var _ = Describe("CronJob schedules at the edge of the parser", func() {
+	const ns = "cg-edge"
+
+	DescribeTable("never panics and always reports a verdict",
+		func(name, expr, wantReason string) {
+			now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+			cj := makeCronJob(ns, name, expr)
+			cjm := monitorFor(ns, name+"-mon", name, now.Add(-time.Hour))
+			store := storeWith(cj, cjm)
+			key := types.NamespacedName{Name: name + "-mon", Namespace: ns}
+
+			r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
+			Expect(func() {
+				_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+				Expect(err).NotTo(HaveOccurred())
+			}).NotTo(Panic())
+
+			var got monitoringv1alpha1.CronJobMonitor
+			Expect(store.Get(ctx, key, &got)).To(Succeed())
+			rec := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+			Expect(rec).NotTo(BeNil())
+			Expect(rec.Reason).To(Equal(wantReason))
+		},
+		Entry("step wider than the field", "wide-step", "*/120 4-22 * * *", monitoringv1alpha1.ReasonReconcileSuccess),
+		Entry("inline TZ prefix", "inline-tz", "TZ=Europe/Berlin 0 3 * * *", monitoringv1alpha1.ReasonReconcileSuccess),
+		Entry("question mark day-of-month", "qmark", "0 0 ? * *", monitoringv1alpha1.ReasonReconcileSuccess),
+		Entry("@every", "every", "@every 30m", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("@every behind a TZ prefix", "every-tz", "TZ=UTC @every 30m", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("minute out of range", "minute-60", "60 * * * *", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("six fields", "six", "0 * * * * *", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("Quartz L", "quartz-l", "0 0 L * *", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("February 30", "feb-30", "0 0 30 2 *", monitoringv1alpha1.ReasonUnsatisfiableSchedule),
+		Entry("April 31", "apr-31", "0 0 31 4 *", monitoringv1alpha1.ReasonUnsatisfiableSchedule),
+	)
+})

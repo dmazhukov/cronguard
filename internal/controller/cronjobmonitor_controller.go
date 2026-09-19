@@ -307,10 +307,12 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	updateLastObservedTimes(cjm)
 
 	now := r.now()
-	nextExpected := parsed.Next(now)
-	if nextExpected.IsZero() {
+	nextExpected, satisfiable := parsed.NextSlot(now)
+	if !satisfiable {
 		// The expression parses but matches no date the calendar has — Feb 30,
-		// April 31. Kubernetes accepts those on a CronJob, and our CEL never
+		// April 31. NextSlot, not Next: a single Next returns zero whenever the
+		// next slot is beyond robfig's five-year reach, which "0 0 29 2 *" is
+		// for most of 2096-2103, and that is not the same as never. Kubernetes accepts those on a CronJob, and our CEL never
 		// sees CronJob.spec.schedule, so this reaches us. Before the schedule
 		// layer was bounded it showed up as a wedged worker or 100001 missed
 		// runs; without this branch it would show up as nothing at all —

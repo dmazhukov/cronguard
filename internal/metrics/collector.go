@@ -99,7 +99,11 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(c.lastSuccess, prometheus.GaugeValue, tsValue(cjm.Status.LastSuccessTime), labels...)
 		ch <- prometheus.MustNewConstMetric(c.lastFailure, prometheus.GaugeValue, tsValue(cjm.Status.LastFailureTime), labels...)
 		ch <- prometheus.MustNewConstMetric(c.lastSchedule, prometheus.GaugeValue, tsValue(cjm.Status.LastScheduleTime), labels...)
-		ch <- prometheus.MustNewConstMetric(c.nextExpected, prometheus.GaugeValue, tsValue(cjm.Status.NextExpectedTime), labels...)
+		// No upcoming slot (an unsatisfiable schedule, or not yet reconciled)
+		// is an absent series, not 0: a 0 reads as a run expected in 1970.
+		if cjm.Status.NextExpectedTime != nil {
+			ch <- prometheus.MustNewConstMetric(c.nextExpected, prometheus.GaugeValue, tsValue(cjm.Status.NextExpectedTime), labels...)
+		}
 		ch <- prometheus.MustNewConstMetric(c.consecFails, prometheus.GaugeValue, float64(cjm.Status.ConsecutiveFailures), labels...)
 		ch <- prometheus.MustNewConstMetric(c.missedRuns, prometheus.GaugeValue, float64(cjm.Status.MissedRuns), labels...)
 		ch <- prometheus.MustNewConstMetric(c.drift, prometheus.GaugeValue, float64(cjm.Status.ScheduleDriftSeconds), labels...)

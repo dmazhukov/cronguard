@@ -143,6 +143,29 @@ func (s *Schedule) Next(from time.Time) time.Time {
 	return s.expr.Next(from)
 }
 
+// NextSlot returns the first slot strictly after from, and whether there is
+// one at all. Unlike Next it is not bounded by robfig's five-year reach: it
+// chains Next at five-year strides and stops only once the searched range
+// covers prevLookbackYears, which exceeds the widest gap this grammar admits
+// (see there). So false means the schedule never fires again — February 30 —
+// not that its next slot is far away, which is what a zero from a single
+// Next can mean for "0 0 29 2 *" across the 2100 non-leap year.
+func (s *Schedule) NextSlot(from time.Time) (time.Time, bool) {
+	loc := s.location()
+	limit := from.In(loc).AddDate(prevLookbackYears, 0, 0)
+	x := from
+	for {
+		if n := s.expr.Next(x); !n.IsZero() {
+			return n, true
+		}
+		covered := reachFrom(x, loc)
+		if !covered.Before(limit) {
+			return time.Time{}, false
+		}
+		x = covered
+	}
+}
+
 // robfigReachYears mirrors the yearLimit in robfig/cron's SpecSchedule.Next
 // (spec.go: `yearLimit := t.Year() + 5`). A single Next(t) therefore resolves
 // only the window (t, endOfYear(year(t)+5)], and returns the zero time beyond

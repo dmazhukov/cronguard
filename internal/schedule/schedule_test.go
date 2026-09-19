@@ -472,3 +472,48 @@ func TestPrevBelowHorizonReturnsNotFound(t *testing.T) {
 		t.Error("Prev(zero time) reported a slot")
 	}
 }
+
+// NextSlot must look past robfig's five-year reach. "0 0 29 2 *" fires on
+// 2096-02-29 and next on 2104-02-29 (2100 is not a leap year); from March
+// 2096 a single Next returns the zero time, which is not the same as "never".
+func TestNextSlotLooksPastRobfigReach(t *testing.T) {
+	s, err := schedule.ParseInLocation("0 0 29 2 *", time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2096, 3, 1, 0, 0, 0, 0, time.UTC)
+	if raw := s.Next(from); !raw.IsZero() {
+		t.Fatalf("precondition: robfig's Next should give up here, got %v", raw)
+	}
+	got, ok := s.NextSlot(from)
+	want := time.Date(2104, 2, 29, 0, 0, 0, 0, time.UTC)
+	if !ok || !got.Equal(want) {
+		t.Fatalf("NextSlot(%v) = %v, %v; want %v, true", from, got, ok, want)
+	}
+}
+
+func TestNextSlotUnsatisfiable(t *testing.T) {
+	for _, expr := range []string{"0 0 30 2 *", "0 0 31 4 *", "0 0 31 11 *"} {
+		s, err := schedule.ParseInLocation(expr, time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := s.NextSlot(time.Date(2026, 9, 19, 0, 0, 0, 0, time.UTC)); ok || !got.IsZero() {
+			t.Fatalf("%s: NextSlot = %v, %v; want zero, false", expr, got, ok)
+		}
+	}
+}
+
+func TestNextSlotMatchesNextWithinReach(t *testing.T) {
+	from := time.Date(2026, 9, 19, 10, 17, 0, 0, time.UTC)
+	for _, expr := range []string{"* * * * *", "0 2 * * *", "30 1 * * 0", "0 0 1 1 *", "@hourly"} {
+		s, err := schedule.ParseInLocation(expr, time.UTC)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := s.NextSlot(from)
+		if !ok || !got.Equal(s.Next(from)) {
+			t.Fatalf("%s: NextSlot = %v, %v; Next = %v", expr, got, ok, s.Next(from))
+		}
+	}
+}
