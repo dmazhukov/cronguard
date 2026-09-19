@@ -23,6 +23,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	monitoringv1alpha1 "github.com/dmazhukov/cronguard/api/v1alpha1"
@@ -71,6 +72,12 @@ type CronJobMonitorReconciler struct {
 	// reconcile in parallel goroutines).
 	lastMissed   map[types.NamespacedName]int32
 	lastMissedMu sync.Mutex
+
+	// MaxConcurrentReconciles is the number of monitors reconciled in
+	// parallel. Zero keeps the historical single worker. Safe above one:
+	// the workqueue never hands the same key to two workers, and the only
+	// state shared across keys is lastMissed, which lastMissedMu guards.
+	MaxConcurrentReconciles int
 }
 
 // now returns the current time via the injected Clock, or wall clock.
@@ -784,5 +791,14 @@ func (r *CronJobMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&monitoringv1alpha1.CronJobMonitor{}).
 		Watches(&batchv1.Job{}, handler.EnqueueRequestsFromMapFunc(r.mapJobToMonitors)).
+		WithOptions(r.controllerOptions()).
 		Complete(r)
+}
+
+func (r *CronJobMonitorReconciler) controllerOptions() controller.Options {
+	workers := r.MaxConcurrentReconciles
+	if workers < 1 {
+		workers = 1
+	}
+	return controller.Options{MaxConcurrentReconciles: workers}
 }

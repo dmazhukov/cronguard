@@ -65,6 +65,35 @@ helm install cronguard cronguard/cronguard \
 
 With `replicaCount > 1` AND `serviceMonitor.enabled=true`, the chart's ServiceMonitor adds a `relabelings: keep regex: leader` rule keyed on the `cronguard.io/role` pod label. Only the elected leader pod is scraped — without this, both pods would serve `/metrics` with identical labels and Prometheus would double-count every gauge. The standby pod is patched with `cronguard.io/role: standby` and remains visible in the Service's endpoints (for kubelet liveness/readiness traffic) but excluded from scrape.
 
+## Operator flags
+
+The Helm chart sets these from values; with the raw manifests, edit the `args` of the `manager` container.
+
+| Flag | Default | Chart value | What it does |
+|---|---|---|---|
+| `--metrics-bind-address` | `:8080` | `metrics.port` | Where `/metrics` listens, plain HTTP. |
+| `--health-probe-bind-address` | `:8081` | `healthProbe.port` | Where `/healthz` and `/readyz` listen. |
+| `--leader-elect` | `true` | `leaderElection.enabled` | Leader election; required for more than one replica. |
+| `--namespace` | empty | `namespace` | Watch one namespace instead of the whole cluster. |
+| `--max-concurrent-reconciles` | `1` | `maxConcurrentReconciles` | Monitors reconciled in parallel. |
+
+The `--zap-*` logging flags from controller-runtime are also accepted, for example `--zap-log-level=2` through the chart's `extraArgs`.
+
+## Events
+
+The operator emits Kubernetes events on the `CronJobMonitor`, only on transitions, so a monitor stuck in one state does not repeat them.
+
+| Type | Reason | When |
+|---|---|---|
+| Warning | `CronJobNotFound`, `CronJobSuspended`, `InvalidSchedule`, `InvalidTimeZone`, `UnsatisfiableSchedule` | Measuring stopped; the same reason is on the `Reconciled` condition. |
+| Warning | `ScheduleMismatch` | `spec.schedule` overrides the CronJob's own schedule; once per spec change. |
+| Warning | `ScheduleMissed`, `ConsecutiveFailures`, `DurationExceeded` | An SLO axis turned False. |
+| Normal | `ReconcileSuccess` | Measuring resumed after one of the first-row reasons. |
+
+```bash
+kubectl get events -n <ns> --field-selector involvedObject.kind=CronJobMonitor
+```
+
 ## CRD upgrades
 
 Helm 3 installs the CronGuard CRD on `helm install` but does NOT modify it on `helm upgrade` — this is a deliberate Helm 3 design. To upgrade the CRD when the chart bumps it:

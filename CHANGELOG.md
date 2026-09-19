@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`--max-concurrent-reconciles` (chart value `maxConcurrentReconciles`, default 1).** The worker count was fixed at controller-runtime's default of one, so a single slow monitor delayed every other. Values below 1 are rejected at startup and by the chart schema.
+- **Chart: `CronGuardOperatorDown` matches on the release namespace only when `serviceMonitor.enabled` is set.** `cronguard_build_info` carries no namespace label of its own; the chart's ServiceMonitor adds it. With any other scrape setup the old matcher found nothing and the alert fired forever.
+- **Chart: `crds.install` is documented as ignored**, which it always was — no template reads it. Use `helm install --skip-crds`. The key stays in the schema so existing values files still validate. The schema now also covers `serviceMonitor.namespace`, `labels` and `honorLabels`, which the templates already used.
+- **Docs: operator flags and the event vocabulary** are listed in `docs/distribution.md`.
 - **Toolchain brought current.** Kubernetes e2e runs on kind v0.33.0 with `kindest/node:v1.37.0` pinned by digest (1.33 reached end of life on 2026-06-28 and kind no longer builds it; the local script defaulted to 1.31). CI and release build with Go 1.27 to match the Docker builder. Helm 4.2.4 in chart-lint, e2e and the chart publish job (Helm 3 takes only security fixes until 2027-02-10). controller-gen v0.22.0 (the CRD changes only in its version annotation), golangci-lint v2.13.2, kubeconform v0.8.0, govulncheck pinned to v1.7.0 instead of `@latest`.
 - **Every third-party action in every workflow is pinned to a commit SHA**, not only in `release.yml`; the version stays as a trailing comment and Dependabot moves the pins.
 - **Base images are pinned by digest** — `golang:1.27.1` and `gcr.io/distroless/static-debian13:nonroot`. The unsuffixed distroless tag silently moved to Debian 13 in May 2026 and the Debian 12 variants reach end of life this month; Dependabot can bump an existing digest but never adds the first one.

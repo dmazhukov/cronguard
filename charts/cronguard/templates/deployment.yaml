@@ -50,6 +50,7 @@ spec:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.healthProbe.port }}
             - --leader-elect={{ .Values.leaderElection.enabled }}
+            - --max-concurrent-reconciles={{ .Values.maxConcurrentReconciles }}
             {{- with .Values.namespace }}
             - --namespace={{ . }}
             {{- end }}

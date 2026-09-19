@@ -7,6 +7,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	// Embed the IANA timezone database so time.LoadLocation succeeds inside
@@ -56,15 +57,22 @@ func main() {
 		probeAddr            string
 		enableLeaderElection bool
 		namespace            string
+		workers              int
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager.")
 	flag.StringVar(&namespace, "namespace", "", "Restrict watch to a single namespace. Empty means cluster-wide.")
+	flag.IntVar(&workers, "max-concurrent-reconciles", 1,
+		"Number of CronJobMonitors reconciled in parallel. Raise it when one slow monitor would otherwise delay the rest.")
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	if workers < 1 {
+		fmt.Fprintln(os.Stderr, "--max-concurrent-reconciles must be at least 1")
+		os.Exit(2)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -114,7 +122,8 @@ func main() {
 		// every Eventf call — wrong shape for our reason-driven status events.
 		// Migration deferred to v0.3+ when we either drop events entirely or
 		// commit to the new API everywhere.
-		Recorder: mgr.GetEventRecorderFor("cronguard"), //nolint:staticcheck // SA1019: see comment above
+		Recorder:                mgr.GetEventRecorderFor("cronguard"), //nolint:staticcheck // SA1019: see comment above
+		MaxConcurrentReconciles: workers,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CronJobMonitor")
 		os.Exit(1)

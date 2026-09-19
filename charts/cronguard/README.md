@@ -63,6 +63,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `resources.requests.memory` | string | `64Mi` | Container memory request. |
 | `resources.limits.cpu` | string | `500m` | Container CPU limit. |
 | `resources.limits.memory` | string | `256Mi` | Container memory limit. |
+| `maxConcurrentReconciles` | integer | `1` | Monitors reconciled in parallel (`--max-concurrent-reconciles`). |
 | `metrics.port` | integer | `8080` | Prometheus `/metrics` listener port. |
 | `healthProbe.port` | integer | `8081` | Liveness and readiness probe port. |
 | `serviceMonitor.enabled` | boolean | `false` | Render a `ServiceMonitor` for prometheus-operator. |
@@ -71,7 +72,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `serviceMonitor.interval` | string | `30s` | Scrape interval. |
 | `serviceMonitor.scrapeTimeout` | string | `10s` | Scrape timeout. |
 | `serviceMonitor.honorLabels` | boolean | `false` | Pass through `honorLabels` to scrape config. |
-| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (4 SLO-axis + 2 burn-rate + Operator Down). |
+| `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (4 SLO-axis + 2 burn-rate + Operator Down). `CronGuardOperatorDown` matches on the release namespace only when `serviceMonitor.enabled` is set, because the namespace label comes from that scrape. |
 | `prometheusRule.namespace` | string | `""` | Namespace for the `PrometheusRule`. Empty defaults to release namespace. |
 | `prometheusRule.labels` | object | `{}` | Extra labels on the `PrometheusRule`. |
 | `prometheusRule.interval` | string | `30s` | Rule evaluation interval. |
@@ -93,7 +94,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `prometheusRule.thresholds.missedRunsBurnSlow.slowRate` | number | `3` | Slow-window second condition (missed runs over 6h). |
 | `prometheusRule.thresholds.missedRunsBurnSlow.for` | string | `15m` | `for:` duration for `CronGuardMissedRunsBurnSlow`. |
 | `prometheusRule.thresholds.missedRunsBurnSlow.severity` | string | `info` | Severity label. |
-| `crds.install` | boolean | `true` | Install the `CronJobMonitor` CRD on `helm install`. |
+| `crds.install` | boolean | `true` | Deprecated, ignored. Use `helm install --skip-crds` to skip the CRD. |
 | `podAnnotations` | object | `{}` | Annotations applied to operator pods. |
 | `podLabels` | object | `{}` | Extra labels applied to operator pods. |
 | `podSecurityContext` | object | runAsNonRoot, runAsUser 65532, RuntimeDefault seccomp | Pod-level security context. |
@@ -119,7 +120,7 @@ helm upgrade cronguard ./charts/cronguard -n cronguard-system
 
 ## CRD management notes
 
-The chart ships the CRD in `crds/cronjobmonitors.yaml`. Helm 3 treats `crds/` specially: contents are installed once on `helm install` and ignored on `helm upgrade`. Set `crds.install=false` if you manage CRDs externally — for example, a separate `kubectl apply` step in your delivery pipeline.
+The chart ships the CRD in `crds/cronjobmonitors.yaml`. Helm 3 treats `crds/` specially: contents are installed once on `helm install` and ignored on `helm upgrade`. If you manage CRDs externally — for example, a separate `kubectl apply` step in your delivery pipeline — install with `helm install --skip-crds`. The `crds.install` value never controlled this and is ignored.
 
 ## Examples
 
