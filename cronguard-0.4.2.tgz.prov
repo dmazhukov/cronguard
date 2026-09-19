@@ -1,0 +1,67 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/changes: |
+    - kind: fixed
+      description: A failed run has an end time and a duration; a Job stopped by activeDeadlineSeconds after running out of maxDurationSeconds raises DurationExceeded
+    - kind: fixed
+      description: helm upgrade --reuse-values from chart 0.2.0-0.2.6 renders again
+    - kind: added
+      description: networkPolicy chart value, an opt-in ingress policy that limits who can scrape /metrics
+    - kind: security
+      description: Chart signed with a PGP provenance file, verifiable with helm --verify
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: GitHub
+      url: https://github.com/dmazhukov/cronguard
+    - name: OCI
+      url: oci://ghcr.io/dmazhukov/charts/cronguard
+  artifacthub.io/signKey: |
+    fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+    url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
+apiVersion: v2
+appVersion: 0.4.2
+description: SLO-style observability operator for Kubernetes CronJobs
+home: https://github.com/dmazhukov/cronguard
+keywords:
+- - kubernetes
+- - operator
+- - cronjob
+- - prometheus
+- - sre
+- - slo
+- - monitoring
+kubeVersion: '>=1.28.0-0'
+maintainers:
+- - email: dmitry0983@gmail.com
+  name: Dmitrii Zhukov
+  url: https://github.com/dmazhukov
+name: cronguard
+sources:
+- - https://github.com/dmazhukov/cronguard
+type: application
+version: 0.4.2
+
+...
+files:
+  cronguard-0.4.2.tgz: sha256:295346667ccc2de89ffe4de258133332bbb9092cc70238aff4360401d900b6bc
+
+-----BEGIN PGP SIGNATURE-----
+
+wsG5BAEBCgBtBYJqriWkCRAAbpkBdKt9YUUUAAAAAAAcACBzYWx0QG5vdGF0aW9u
+cy5vcGVucGdwanMub3JnFpX18sq/U4zFCqPA/DvnHgRaaBFfkbKAl7WTtIcV/VQW
+IQTY0jBH8vZvV/TnBRQAbpkBdKt9YQAAqaMP/08HTD+9c9jVK1Vkxk6S4iV4m29m
+XkT6yGfLaCllHzKVe6Tq2Ho1RBElIzkURM0xkJepHA/6jDFwXEeNbv1W+VDOAJIM
+OukuR7fgl0aq903Ey/yDQaMehtXMUdNs2OWZuR4DEQUGF8vzdn5+MT9yrix9zxBg
++CN1dsMWNoNEBZVtXP8PN17AGCHax8EzN4FLxjp9EzpZl69XFd2TIlVrS5dCkHl9
+kQhZhCrkqCtsAdxBl4lhZ0bRmF+15FWIrVV/0Uh72H+tnKIvsmk0bjuSD6Hy8/SN
+DIdT2jlxanQaGKEvKjIXWoq8ddLPY5r/JpUia6VTTbHGbjlT32Q36c+3vljPcgeT
+aOEXcDEUi1lUYJKc7rsymYxTTdswaFE366VDHGgD5mxQSwjG3EBQESfyNwkMk34U
+c/leyCSSwR24jdcfJbzZEe8xgih7k3onen7uPs44KRyIzjOtuCWFOnHJthSJkruQ
+eXy2a37jJ4ok1tB+kHYiR7yX8Qz756PaFyu70TrlslUwlBD3xvhWCj+xEAkP6HZt
+/VpVGzBxE0uuaweh55ZurTXEKFL/6WHK6YqjFlMQj4RlmaBQ+lATQVTJvG6aN7RN
+JWu6tfwcKSn9qgXfaawh4WcLP+FThcNpLR+BShUpMofxMRPAqNYjSE3MpEeFLHPN
+QBp0NepaZuRxipXa
+-----END PGP SIGNATURE-----

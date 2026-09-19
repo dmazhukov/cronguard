@@ -5,6 +5,52 @@ entries:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
         - kind: fixed
+          description: A failed run has an end time and a duration; a Job stopped by activeDeadlineSeconds after running out of maxDurationSeconds raises DurationExceeded
+        - kind: fixed
+          description: helm upgrade --reuse-values from chart 0.2.0-0.2.6 renders again
+        - kind: added
+          description: networkPolicy chart value, an opt-in ingress policy that limits who can scrape /metrics
+        - kind: security
+          description: Chart signed with a PGP provenance file, verifiable with helm --verify
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: GitHub
+          url: https://github.com/dmazhukov/cronguard
+        - name: OCI
+          url: oci://ghcr.io/dmazhukov/charts/cronguard
+      artifacthub.io/signKey: |
+        fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+        url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.4.2
+    created: "2026-09-19T06:03:27.019493229Z"
+    description: SLO-style observability operator for Kubernetes CronJobs
+    digest: 295346667ccc2de89ffe4de258133332bbb9092cc70238aff4360401d900b6bc
+    home: https://github.com/dmazhukov/cronguard
+    keywords:
+    - kubernetes
+    - operator
+    - cronjob
+    - prometheus
+    - sre
+    - slo
+    - monitoring
+    kubeVersion: '>=1.28.0-0'
+    maintainers:
+    - email: dmitry0983@gmail.com
+      name: Dmitrii Zhukov
+      url: https://github.com/dmazhukov
+    name: cronguard
+    sources:
+    - https://github.com/dmazhukov/cronguard
+    type: application
+    urls:
+    - https://dmazhukov.github.io/cronguard/cronguard-0.4.2.tgz
+    version: 0.4.2
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: fixed
           description: A Job seen running and then failing is counted as a failure; ConsecutiveFailures and ExecutionHealthy missed nearly every real failure before
         - kind: fixed
           description: UnsatisfiableSchedule means the schedule never fires, not that its next slot is more than five years away
@@ -525,4 +571,4 @@ entries:
     urls:
     - https://dmazhukov.github.io/cronguard/cronguard-0.2.0.tgz
     version: 0.2.0
-generated: "2026-09-19T02:31:11.365154725Z"
+generated: "2026-09-19T06:03:27.018659311Z"
