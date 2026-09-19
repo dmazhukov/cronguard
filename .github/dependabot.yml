@@ -46,6 +46,13 @@ updates:
       - "github-actions"
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      # init, autobuild, analyze and upload-sarif are one release of one
+      # action pinned at four call sites. Split into separate PRs (as in
+      # #107-#110) the pins disagree and analyze fails in every one of them.
+      codeql:
+        patterns:
+          - "github/codeql-action*"
 
   # Docker (operator image base)
   - package-ecosystem: "docker"
