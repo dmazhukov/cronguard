@@ -132,4 +132,11 @@ cosign verify \
 
 The signatures are stored as OCI referrers in the Sigstore bundle format. cosign v3 finds them as shown; cosign 2.x needs `--new-bundle-format` (checked with 2.6.1) and without it reports `no signatures found`.
 
-Releases before v0.4.1 have the attestation but no cosign signature. Artifact Hub does not mark the chart as signed: the listing is registered from the GitHub Pages repository, where it looks for a Helm provenance file (`.prov`), and it checks cosign signatures only for charts listed from an OCI registry.
+Releases before v0.4.1 have the attestation but no cosign signature.
+
+Charts released after v0.4.1 also carry a Helm provenance file (`.prov`), signed with the project's PGP key: [`docs/chart-signing-key.asc`](chart-signing-key.asc), fingerprint `D8D2 3047 F2F6 6F57 F4E7 0514 006E 9901 74AB 7D61`, also served as `https://dmazhukov.github.io/cronguard/pgp_keys.asc`. `helm pull --verify` and `helm install --verify` check it against a keyring you pass, from the OCI registry and from the GitHub Pages repository alike. This is also what Artifact Hub reads to show the chart as signed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dmazhukov/cronguard/main/docs/chart-signing-key.asc | gpg --dearmor > cronguard-keyring.gpg
+helm pull oci://ghcr.io/dmazhukov/charts/cronguard --version 0.4.1 --verify --keyring cronguard-keyring.gpg
+```

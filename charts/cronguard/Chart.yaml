@@ -36,6 +36,9 @@ annotations:
       description: CronGuardOperatorDown uses the namespace matcher only with the chart's ServiceMonitor
     - kind: security
       description: Image and OCI chart signed with cosign; SBOM and Sigstore bundle attached to the release
+  artifacthub.io/signKey: |
+    fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+    url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
   artifacthub.io/links: |
     - name: GitHub
       url: https://github.com/dmazhukov/cronguard
