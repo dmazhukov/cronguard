@@ -170,6 +170,22 @@ jobs:
           version: v4.2.4
       - name: helm lint
         run: helm lint charts/cronguard
+      # A missing signing secret, or one that stopped matching the committed
+      # public key, fails here instead of halfway through a release. Fork and
+      # Dependabot runs get no secrets.
+      - name: sign the chart as a release does
+        env:
+          HELM_SIGNING_KEY: ${{ secrets.HELM_SIGNING_KEY }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "$HELM_SIGNING_KEY" ]; then
+            if [ "$EVENT" = pull_request ] || [ "$ACTOR" = "dependabot[bot]" ]; then
+              echo "no signing secret in this run, skipped"; exit 0
+            fi
+            echo "::error::secret HELM_SIGNING_KEY is not set; the next release would fail in its chart job"; exit 1
+          fi
+          hack/sign-chart.sh 0.0.0-ci /tmp/chart-signed > /dev/null
       - name: Install kubeconform
         run: |
           KUBECONFORM_VERSION=v0.8.0

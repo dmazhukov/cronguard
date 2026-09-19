@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The Helm chart carries a PGP provenance file (`.prov`)** in the gh-pages repository and in the OCI chart, so `helm install --verify` and `helm pull --verify` check it, and Artifact Hub shows the chart as signed. Artifact Hub reads cosign signatures only for listings registered from an OCI registry, and CronGuard's listing comes from gh-pages, where Artifact Hub looks for a `.prov` file. The public key is `docs/chart-signing-key.asc`, fingerprint `D8D2 3047 F2F6 6F57 F4E7 0514 006E 9901 74AB 7D61`. The cosign signature on the OCI chart stays.
+
 ### Fixed
 
-- **Docs: verifying the cosign signatures of 0.4.1.** The signatures are OCI referrers in the Sigstore bundle format: cosign v3 finds them, cosign 2.x reports `no signatures found` unless given `--new-bundle-format`. `docs/distribution.md` named v0.5.0 as the first signed release; it is v0.4.1. The chart is not shown as signed on Artifact Hub, which reads cosign signatures only for listings registered from an OCI registry.
+- **Docs: verifying the cosign signatures of 0.4.1.** The signatures are OCI referrers in the Sigstore bundle format: cosign v3 finds them, cosign 2.x reports `no signatures found` unless given `--new-bundle-format`. `docs/distribution.md` named v0.5.0 as the first signed release; it is v0.4.1.
 
 ## [0.4.1] - 2026-09-19
 

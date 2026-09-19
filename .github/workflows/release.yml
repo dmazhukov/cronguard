@@ -244,16 +244,15 @@ jobs:
             --username ${{ github.actor }} \
             --password-stdin
 
-      - name: Package chart
+      # Artifact Hub shows a chart listed from gh-pages as signed only when a
+      # .prov file sits next to it.
+      - name: Package and sign chart
         id: package
+        env:
+          HELM_SIGNING_KEY: ${{ secrets.HELM_SIGNING_KEY }}
         run: |
-          mkdir -p /tmp/chart
           VER="${{ github.ref_name }}"
-          VER_NO_V="${VER#v}"
-          helm package charts/cronguard \
-            --version "${VER_NO_V}" --app-version "${VER_NO_V}" \
-            -d /tmp/chart/
-          PKG=$(ls /tmp/chart/*.tgz | head -1)
+          PKG=$(hack/sign-chart.sh "${VER#v}" /tmp/chart)
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
           echo "filename=$(basename "$PKG")" >> "$GITHUB_OUTPUT"
 
@@ -266,10 +265,8 @@ jobs:
           [ -n "$digest" ] || { echo "::error::helm push printed no digest"; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      # GitHub attestations do not cover charts pushed with helm. This does not
-      # mark the Artifact Hub listing signed: it is the gh-pages repository,
-      # where Artifact Hub looks for a .prov file. cosign pushes with Docker's
-      # credentials, not helm's, hence the Docker login.
+      # GitHub attestations do not cover charts pushed with helm. cosign pushes
+      # with Docker's credentials, not helm's, hence the Docker login.
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
@@ -289,7 +286,8 @@ jobs:
       - name: Stage gh-pages content
         run: |
           mkdir -p /tmp/gh-pages
-          cp "${{ steps.package.outputs.pkg }}" /tmp/gh-pages/
+          cp "${{ steps.package.outputs.pkg }}" "${{ steps.package.outputs.pkg }}.prov" /tmp/gh-pages/
+          cp docs/chart-signing-key.asc /tmp/gh-pages/pgp_keys.asc
           cp charts/cronguard/.artifacthub/artifacthub-repo.yml /tmp/gh-pages/artifacthub-repo.yml || true
           # Fetch existing index.yaml from gh-pages so we merge new release.
           if curl -fsSL "https://dmazhukov.github.io/cronguard/index.yaml" -o /tmp/gh-pages/index.yaml.existing; then
