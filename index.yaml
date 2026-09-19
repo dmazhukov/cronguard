@@ -5,6 +5,53 @@ entries:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
         - kind: fixed
+          description: A Job seen running and then failing is counted as a failure; ConsecutiveFailures and ExecutionHealthy missed nearly every real failure before
+        - kind: fixed
+          description: UnsatisfiableSchedule means the schedule never fires, not that its next slot is more than five years away
+        - kind: fixed
+          description: next_expected_timestamp_seconds is absent while the operator is not measuring, instead of 0 or a stale value
+        - kind: added
+          description: --max-concurrent-reconciles and the maxConcurrentReconciles chart value
+        - kind: changed
+          description: CronGuardOperatorDown uses the namespace matcher only with the chart's ServiceMonitor
+        - kind: security
+          description: Image and OCI chart signed with cosign; SBOM and Sigstore bundle attached to the release
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: GitHub
+          url: https://github.com/dmazhukov/cronguard
+        - name: OCI
+          url: oci://ghcr.io/dmazhukov/charts/cronguard
+    apiVersion: v2
+    appVersion: 0.4.1
+    created: "2026-09-19T02:31:11.366143604Z"
+    description: SLO-style observability operator for Kubernetes CronJobs
+    digest: 43d7aa761a2fed79724fcd6b3b5e2a249022fe4292176bb8e1f55b15e58672d2
+    home: https://github.com/dmazhukov/cronguard
+    keywords:
+    - kubernetes
+    - operator
+    - cronjob
+    - prometheus
+    - sre
+    - slo
+    - monitoring
+    kubeVersion: '>=1.28.0-0'
+    maintainers:
+    - email: dmitry0983@gmail.com
+      name: Dmitrii Zhukov
+      url: https://github.com/dmazhukov
+    name: cronguard
+    sources:
+    - https://github.com/dmazhukov/cronguard
+    type: application
+    urls:
+    - https://dmazhukov.github.io/cronguard/cronguard-0.4.1.tgz
+    version: 0.4.1
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
+        - kind: fixed
           description: Prev() no longer hangs the reconcile worker on an impossible schedule; unsatisfiable schedules report UnsatisfiableSchedule instead of healthy
         - kind: fixed
           description: Runs during operator downtime are no longer charged as missed (floor from CronJob.status.lastScheduleTime, ADR 0001)
@@ -478,4 +525,4 @@ entries:
     urls:
     - https://dmazhukov.github.io/cronguard/cronguard-0.2.0.tgz
     version: 0.2.0
-generated: "2026-09-06T03:26:40.560105423Z"
+generated: "2026-09-19T02:31:11.365154725Z"
