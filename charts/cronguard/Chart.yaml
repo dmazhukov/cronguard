@@ -2,8 +2,8 @@ apiVersion: v2
 name: cronguard
 description: SLO-style observability operator for Kubernetes CronJobs
 type: application
-version: 0.4.1
-appVersion: "0.4.1"
+version: 0.4.2
+appVersion: "0.4.2"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/dmazhukov/cronguard
 sources:
@@ -25,17 +25,13 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/changes: |
     - kind: fixed
-      description: A Job seen running and then failing is counted as a failure; ConsecutiveFailures and ExecutionHealthy missed nearly every real failure before
+      description: A failed run has an end time and a duration; a Job stopped by activeDeadlineSeconds after running out of maxDurationSeconds raises DurationExceeded
     - kind: fixed
-      description: UnsatisfiableSchedule means the schedule never fires, not that its next slot is more than five years away
-    - kind: fixed
-      description: next_expected_timestamp_seconds is absent while the operator is not measuring, instead of 0 or a stale value
+      description: helm upgrade --reuse-values from chart 0.2.0-0.2.6 renders again
     - kind: added
-      description: --max-concurrent-reconciles and the maxConcurrentReconciles chart value
-    - kind: changed
-      description: CronGuardOperatorDown uses the namespace matcher only with the chart's ServiceMonitor
+      description: networkPolicy chart value, an opt-in ingress policy that limits who can scrape /metrics
     - kind: security
-      description: Image and OCI chart signed with cosign; SBOM and Sigstore bundle attached to the release
+      description: Chart signed with a PGP provenance file, verifiable with helm --verify
   artifacthub.io/signKey: |
     fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
     url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
