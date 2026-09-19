@@ -142,3 +142,25 @@ cronguard_running_jobs{cronjob="demo-cj",name="demo",namespace="ns1"} 1
 		t.Fatal(err)
 	}
 }
+
+// A schedule with no upcoming slot leaves NextExpectedTime nil. Publishing 0
+// for it reads as 1970-01-01 — an expected run fifty years overdue — the same
+// class of lie v0.3.2 removed from the last-success panel. No slot, no series.
+func TestCollectorOmitsNextExpectedWhenUnknown(t *testing.T) {
+	cjm := monitoringv1alpha1.CronJobMonitor{
+		ObjectMeta: metav1.ObjectMeta{Name: "never", Namespace: "ns1"},
+		Spec: monitoringv1alpha1.CronJobMonitorSpec{
+			CronJobRef: monitoringv1alpha1.CronJobReference{Name: "never-cj"},
+		},
+	}
+	c := metrics.NewCollector(stubLister{items: []monitoringv1alpha1.CronJobMonitor{cjm}})
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(c)
+	n, err := testutil.GatherAndCount(reg, "cronguard_next_expected_timestamp_seconds")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("got %d next_expected series for a monitor with no upcoming slot, want 0", n)
+	}
+}
