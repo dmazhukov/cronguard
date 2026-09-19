@@ -56,6 +56,11 @@ A single failure is noise. Repeated failures across consecutive slots indicate a
 - Image pull failure: registry rate limiting, deleted tag, expired pull secret.
 - Schema or migration mismatch: DB schema changed but the Job's code did not (or vice versa).
 
+### Known Kubernetes causes
+
+- **Since 1.31, fixed in 1.37.0, 1.36.3, 1.35.7 and 1.34.10: a Job with several pods fails late** ([kubernetes#139457](https://github.com/kubernetes/kubernetes/pull/139457)). When one pod fails while others are Ready, the Job controller's status update is rejected during pod-creation backoff; `active`, `ready` and `failed` freeze and the pods stay Terminating for up to about ten minutes. The failure, and this alert, arrive that much later.
+- **Before 1.37: `UnexpectedJob` warnings and a `lastSuccessfulTime` that disagrees with CronGuard** ([kubernetes#133313](https://github.com/kubernetes/kubernetes/pull/133313)). The CronJob controller treated any Job whose owner had the CronJob's name as its own, whatever the owner's kind, so another resource's Jobs could move `CronJob.status.lastSuccessfulTime`. CronGuard counts only Jobs whose controlling owner is the CronJob's UID; those warnings are not the cause of the failures it reports.
+
 ## Remediation
 
 ### Recent regression — roll back
