@@ -28,6 +28,17 @@ spec:
       interval: {{ .Values.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
       honorLabels: {{ .Values.serviceMonitor.honorLabels }}
+      # The series carry the monitor's namespace, and prometheus-operator sets
+      # a namespace target label of its own (the operator's) that wins the
+      # clash: the monitor's lands in exported_namespace. Copy it back, so the
+      # alerts and the dashboard read the monitor's namespace; exported_namespace
+      # stays, so a Prometheus that enforces its own namespace label afterwards
+      # still keeps the monitor's.
+      metricRelabelings:
+        - sourceLabels: [exported_namespace]
+          regex: (.+)
+          targetLabel: namespace
+          replacement: $1
       {{- if gt (int .Values.replicaCount) 1 }}
       relabelings:
         # HA metrics dedup: skip standby replicas. The Labeler in cmd/main.go
