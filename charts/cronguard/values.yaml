@@ -65,6 +65,9 @@ serviceMonitor:
   labels: {}
   interval: 30s
   scrapeTimeout: 10s
+  # The ServiceMonitor puts the monitor's namespace label back itself (see
+  # metricRelabelings in the template); true would also let the scraped series
+  # override job, instance and pod.
   honorLabels: false
 
 # PrometheusRule for opinionated CronGuard alerts.

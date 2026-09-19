@@ -72,7 +72,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `serviceMonitor.labels` | object | `{}` | Extra labels on the `ServiceMonitor`. |
 | `serviceMonitor.interval` | string | `30s` | Scrape interval. |
 | `serviceMonitor.scrapeTimeout` | string | `10s` | Scrape timeout. |
-| `serviceMonitor.honorLabels` | boolean | `false` | Pass through `honorLabels` to scrape config. |
+| `serviceMonitor.honorLabels` | boolean | `false` | Pass through `honorLabels` to scrape config. Not needed for the monitor's `namespace` label: the ServiceMonitor copies it back from `exported_namespace` either way. |
 | `prometheusRule.enabled` | boolean | `false` | Render a `PrometheusRule` with seven default CronGuard alerts (4 SLO-axis + 2 burn-rate + Operator Down). `CronGuardOperatorDown` matches on the release namespace only when `serviceMonitor.enabled` is set, because the namespace label comes from that scrape; without it the alert watches for any CronGuard, so it stays quiet while another installation scraped by the same Prometheus is up. |
 | `prometheusRule.namespace` | string | `""` | Namespace for the `PrometheusRule`. Empty defaults to release namespace. |
 | `prometheusRule.labels` | object | `{}` | Extra labels on the `PrometheusRule`. |
