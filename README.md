@@ -105,7 +105,7 @@ The per-CronJob gauge family is labelled `{namespace, name, cronjob}` (`name` is
 | `cronguard_consecutive_failures` | gauge | Consecutive failed runs |
 | `cronguard_missed_runs` | gauge | Consecutive missed runs |
 | `cronguard_schedule_drift_seconds` | gauge | Drift of most recent run |
-| `cronguard_last_duration_seconds` | gauge | Duration of last completed run |
+| `cronguard_last_duration_seconds` | gauge | Duration of the last finished run, succeeded or failed |
 | `cronguard_condition` | gauge | `1`/`0`/`-1` per condition type/reason (extra labels `type`, `reason`) |
 
 Counters and operator self-metrics (different label sets):

@@ -1300,6 +1300,108 @@ var _ = Describe("Job phase comes from conditions, not counters", func() {
 	})
 })
 
+// Kubernetes sets completionTime only on success: a failed Job's end exists
+// only as the lastTransitionTime of the condition that failed it.
+var _ = Describe("failed Job end time", func() {
+	const ns = "cg-fail-end"
+
+	run := func(name string, prevTook time.Duration, conds func(start time.Time) []batchv1.JobCondition) monitoringv1alpha1.CronJobMonitor {
+		base := time.Now().Add(35 * time.Hour).Truncate(time.Minute)
+		cj := makeCronJob(ns, name, "0 */2 * * *")
+		prevStart := base.Add(-4 * time.Hour)
+		prevDone := metav1.NewTime(prevStart.Add(prevTook))
+		prev := makeOwnedJob(ns, name+"-prev", cj, prevStart)
+		prev.Status = batchv1.JobStatus{
+			StartTime: &metav1.Time{Time: prevStart}, Succeeded: 1, CompletionTime: &prevDone,
+			Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}},
+		}
+		start := base.Add(-2 * time.Hour)
+		job := makeOwnedJob(ns, name+"-cur", cj, start)
+		job.Status = batchv1.JobStatus{StartTime: &metav1.Time{Time: start}, Failed: 1, Conditions: conds(start)}
+		cjm := monitorFor(ns, name+"-mon", name, base.Add(-5*time.Hour))
+		budget := int32(3600)
+		cjm.Spec.MaxDurationSeconds = &budget
+		store := storeWith(cj, prev, job, cjm)
+		key := types.NamespacedName{Name: name + "-mon", Namespace: ns}
+
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(base))
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		Expect(got.Status.RecentExecutions).To(HaveLen(2))
+		Expect(got.Status.RecentExecutions[0].JobName).To(Equal(name + "-cur"))
+		Expect(got.Status.RecentExecutions[0].Phase).To(Equal(monitoringv1alpha1.ExecutionPhaseFailed))
+		return got
+	}
+
+	It("takes the end from the condition that failed the Job and judges its duration", func() {
+		var decided metav1.Time
+		got := run("deadline", 10*time.Minute, func(start time.Time) []batchv1.JobCondition {
+			decided = metav1.NewTime(start.Add(90 * time.Minute))
+			return []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue, Reason: "DeadlineExceeded", LastTransitionTime: decided},
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "DeadlineExceeded", LastTransitionTime: metav1.NewTime(decided.Add(time.Minute))},
+			}
+		})
+
+		rec := got.Status.RecentExecutions[0]
+		Expect(rec.EndTime).NotTo(BeNil())
+		Expect(rec.EndTime.Time).To(BeTemporally("==", decided.Time))
+		Expect(rec.DurationSeconds).NotTo(BeNil())
+		Expect(*rec.DurationSeconds).To(BeNumerically("==", 5400))
+		Expect(got.Status.LastFailureTime.Time).To(BeTemporally("==", decided.Time),
+			"the failure happened when the Job was failed, not when it started")
+		cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionDurationHealthy)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionFalse),
+			"a run stopped after 90 minutes on a one-hour budget exceeded it; the 10-minute run before it does not speak for it")
+		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonDurationExceeded))
+	})
+
+	It("keeps DurationExceeded when a quick failure follows a run over budget", func() {
+		got := run("quick-fail", 4000*time.Second, func(start time.Time) []batchv1.JobCondition {
+			return []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue,
+				Reason: "BackoffLimitExceeded", LastTransitionTime: metav1.NewTime(start.Add(3 * time.Second))}}
+		})
+		cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionDurationHealthy)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonDurationExceeded),
+			"a run that failed after 3s says nothing about how long the Job takes to finish")
+		Expect(cond.Message).To(Equal("last successful run took 4000s (budget 3600s)"))
+	})
+
+	It("counts a run stopped exactly at the budget as over it", func() {
+		got := run("at-budget", 10*time.Minute, func(start time.Time) []batchv1.JobCondition {
+			return []batchv1.JobCondition{{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue,
+				Reason: "DeadlineExceeded", LastTransitionTime: metav1.NewTime(start.Add(time.Hour))}}
+		})
+		cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionDurationHealthy)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonDurationExceeded),
+			"activeDeadlineSeconds equal to maxDurationSeconds stops the run as it runs out of budget")
+	})
+
+	It("uses Failed when it is the only failure condition", func() {
+		got := run("failed-only", 10*time.Minute, func(start time.Time) []batchv1.JobCondition {
+			return []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue,
+				Reason: "BackoffLimitExceeded", LastTransitionTime: metav1.NewTime(start.Add(20 * time.Minute))}}
+		})
+		Expect(got.Status.RecentExecutions[0].DurationSeconds).NotTo(BeNil())
+		Expect(*got.Status.RecentExecutions[0].DurationSeconds).To(BeNumerically("==", 1200))
+	})
+
+	It("records no end rather than the zero time when the condition carries none", func() {
+		got := run("untimed", 10*time.Minute, func(time.Time) []batchv1.JobCondition {
+			return []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}
+		})
+		rec := got.Status.RecentExecutions[0]
+		Expect(rec.EndTime).To(BeNil())
+		Expect(rec.DurationSeconds).To(BeNil())
+		Expect(got.Status.LastFailureTime.Time).To(BeTemporally("==", rec.StartTime.Time))
+	})
+})
+
 // Every early return means "not measuring right now". A next expected run
 // left over from before — the CronJob was since deleted, suspended, or given
 // a schedule that no longer parses — is not an upcoming run, and the
