@@ -65,7 +65,7 @@ func NewCollector(l Lister) *Collector {
 			baseLabels, nil),
 		lastDuration: prometheus.NewDesc(
 			"cronguard_last_duration_seconds",
-			"Duration of last completed Job in seconds",
+			"Duration of the last finished Job in seconds, succeeded or failed",
 			baseLabels, nil),
 		runningJobs: prometheus.NewDesc(
 			"cronguard_running_jobs",

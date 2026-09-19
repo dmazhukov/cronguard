@@ -58,7 +58,8 @@ func Merge(existing, incoming []monitoringv1alpha1.ExecutionRecord, limit int) [
 // shouldReplace returns true when the new record supersedes the existing one.
 // Both carry the same JobName. The phase decides first, because it is the
 // only reliable signal: Kubernetes sets status.completionTime only when a Job
-// succeeds, so a failed Job never gains an EndTime, and the first Running
+// succeeds, so a failed Job's EndTime comes from its conditions and may be
+// absent, and the first Running
 // sighting can carry the creationTimestamp fallback while the terminal view
 // carries the real, earlier status.startTime.
 //

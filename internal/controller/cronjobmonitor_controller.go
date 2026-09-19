@@ -612,7 +612,7 @@ func updateLastObservedTimes(cjm *monitoringv1alpha1.CronJobMonitor) {
 	}
 }
 
-// pickEndOrStart returns EndTime if set, else StartTime (Failed Jobs may have nil CompletionTime).
+// pickEndOrStart returns EndTime if set, else StartTime (a failed Job whose condition carried no time).
 func pickEndOrStart(rec *monitoringv1alpha1.ExecutionRecord) *metav1.Time {
 	if rec.EndTime != nil {
 		return rec.EndTime

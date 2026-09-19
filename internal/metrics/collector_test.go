@@ -119,7 +119,7 @@ func TestCollectorEmitsRemainingMetrics(t *testing.T) {
 	reg.MustRegister(c)
 
 	expected := fmt.Sprintf(`
-# HELP cronguard_last_duration_seconds Duration of last completed Job in seconds
+# HELP cronguard_last_duration_seconds Duration of the last finished Job in seconds, succeeded or failed
 # TYPE cronguard_last_duration_seconds gauge
 cronguard_last_duration_seconds{cronjob="demo-cj",name="demo",namespace="ns1"} 120
 # HELP cronguard_last_failure_timestamp_seconds Unix time of last failed Job; 0 if never

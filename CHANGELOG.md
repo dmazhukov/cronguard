@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed run has an end time and a duration.** Kubernetes sets `status.completionTime` only when a Job succeeds, so a failed run was recorded with no end: `lastFailureTime` and `cronguard_last_failure_timestamp_seconds` showed when the failed run started, and `DurationHealthy` skipped the run and judged the last run with a duration instead. A Job stopped by `activeDeadlineSeconds` for running too long therefore never tripped `DurationExceeded` if an earlier run had been quick. The end is now the `lastTransitionTime` of the condition that failed the Job (`FailureTarget`, or `Failed` without one), and `cronguard_last_duration_seconds` covers failed runs too. A failed run counts only against the budget: one that ran to `maxDurationSeconds` or past it sets `DurationExceeded`, while a quick failure leaves the verdict to the last run that succeeded, since it says nothing about how long the Job takes to finish. **Expect `DurationExceeded` on monitors whose last run failed after running out of budget.**
 - **Docs: verifying the cosign signatures of 0.4.1.** The signatures are OCI referrers in the Sigstore bundle format: cosign v3 finds them, cosign 2.x reports `no signatures found` unless given `--new-bundle-format`. `docs/distribution.md` named v0.5.0 as the first signed release; it is v0.4.1.
 
 ## [0.4.1] - 2026-09-19

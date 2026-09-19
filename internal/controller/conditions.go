@@ -61,7 +61,10 @@ func evaluateExecutionHealthy(cjm *monitoringv1alpha1.CronJobMonitor) {
 	})
 }
 
-// evaluateDurationHealthy examines the most recently completed (non-running) run.
+// evaluateDurationHealthy judges the most recent finished run. A failed run
+// only ever counts against the budget: a quick failure says nothing about how
+// long the Job takes to finish, and one stopped exactly at the budget
+// (activeDeadlineSeconds equal to maxDurationSeconds) ran out of it.
 func evaluateDurationHealthy(cjm *monitoringv1alpha1.CronJobMonitor) {
 	if cjm.Spec.MaxDurationSeconds == nil {
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
@@ -73,6 +76,7 @@ func evaluateDurationHealthy(cjm *monitoringv1alpha1.CronJobMonitor) {
 		})
 		return
 	}
+	subject := "last run"
 	for _, rec := range cjm.Status.RecentExecutions {
 		if rec.Phase == monitoringv1alpha1.ExecutionPhaseRunning {
 			continue
@@ -80,21 +84,31 @@ func evaluateDurationHealthy(cjm *monitoringv1alpha1.CronJobMonitor) {
 		if rec.DurationSeconds == nil {
 			continue
 		}
-		if *rec.DurationSeconds > *cjm.Spec.MaxDurationSeconds {
+		took, budget := *rec.DurationSeconds, *cjm.Spec.MaxDurationSeconds
+		failed := rec.Phase == monitoringv1alpha1.ExecutionPhaseFailed
+		if took > budget || (failed && took >= budget) {
+			msg := fmt.Sprintf("%s took %ds (budget %ds)", subject, took, budget)
+			if failed {
+				msg = fmt.Sprintf("last run failed after %ds (budget %ds)", took, budget)
+			}
 			meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 				Type:               monitoringv1alpha1.ConditionDurationHealthy,
 				Status:             metav1.ConditionFalse,
 				Reason:             monitoringv1alpha1.ReasonDurationExceeded,
-				Message:            fmt.Sprintf("last run took %ds (budget %ds)", *rec.DurationSeconds, *cjm.Spec.MaxDurationSeconds),
+				Message:            msg,
 				ObservedGeneration: cjm.Generation,
 			})
 			return
+		}
+		if failed {
+			subject = "last successful run"
+			continue
 		}
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionDurationHealthy,
 			Status:             metav1.ConditionTrue,
 			Reason:             monitoringv1alpha1.ReasonWithinBudget,
-			Message:            fmt.Sprintf("last run took %ds (budget %ds)", *rec.DurationSeconds, *cjm.Spec.MaxDurationSeconds),
+			Message:            fmt.Sprintf("%s took %ds (budget %ds)", subject, took, budget),
 			ObservedGeneration: cjm.Generation,
 		})
 		return

@@ -113,6 +113,16 @@ if ! kubectl -n "$SAMPLE_NS" wait cronjobmonitor/e2e-fail-mon --timeout=150s \
   exit 1
 fi
 wait_reason e2e-fail-mon ExecutionHealthy ConsecutiveFailures 240s
+# completionTime is set only on success; a failed run's end comes from the
+# condition the Job controller failed it with.
+failed_runs=$(kubectl -n "$SAMPLE_NS" get cronjobmonitor e2e-fail-mon \
+  -o jsonpath='{range .status.recentExecutions[?(@.phase=="Failed")]}{.jobName}{" "}{.endTime}{"\n"}{end}')
+if [[ -z "$failed_runs" ]] || awk 'NF < 2 {bad=1} END {exit !bad}' <<<"$failed_runs"; then
+  log "e2e-fail-mon: a failed run carries no endTime"
+  printf '%s\n' "$failed_runs"
+  kubectl -n "$SAMPLE_NS" get cronjobmonitor e2e-fail-mon -o yaml
+  exit 1
+fi
 
 log "Missed runs accumulate"
 wait_reason e2e-missed-mon ScheduleHealthy ScheduleMissed 180s

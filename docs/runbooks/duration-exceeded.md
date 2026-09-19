@@ -2,9 +2,9 @@
 
 ## Symptom
 
-Alert fires when `cronguard_condition{type="DurationHealthy"} == 0` for at least 1 minute. The most recently completed Job ran longer than `maxDurationSeconds` configured on the `CronJobMonitor`.
+Alert fires when `cronguard_condition{type="DurationHealthy"} == 0` for at least 1 minute. The most recently finished Job, succeeded or failed, ran longer than `maxDurationSeconds` configured on the `CronJobMonitor`. A failed run's duration ends when the Job controller failed it; if `recentExecutions[0].phase` is `Failed`, check the Job's `Failed` condition reason — `DeadlineExceeded` means `activeDeadlineSeconds` stopped a run that was still going; `BackoffLimitExceeded` means the time went mostly to the pauses between retries (10s, doubling), so start from [consecutive-failures](consecutive-failures.md) rather than from resource usage.
 
-User-visible impact: the Job is finishing — output is being produced — but it is finishing late. Downstream consumers see fresher data later than expected; back-to-back schedules may overlap or get squeezed.
+User-visible impact: when the run succeeded, the Job is finishing — output is being produced — but it is finishing late. Downstream consumers see fresher data later than expected; back-to-back schedules may overlap or get squeezed.
 
 ## Why this matters
 

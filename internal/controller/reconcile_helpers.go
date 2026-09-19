@@ -38,7 +38,7 @@ func listOwnedJobs(ctx context.Context, c client.Client, cj *batchv1.CronJob) ([
 	return owned, nil
 }
 
-// jobPhase reads a Job's outcome from its conditions only. The Job controller
+// jobOutcome reads a Job's outcome from its conditions only. The Job controller
 // sets them once and never removes them: Complete (preceded by
 // SuccessCriteriaMet) and Failed (preceded by FailureTarget) are final, so the
 // target conditions already decide the outcome. The counters are not: between
@@ -46,34 +46,51 @@ func listOwnedJobs(ctx context.Context, c client.Client, cj *batchv1.CronJob) ([
 // with completions: 3 reads {succeeded: 1, active: 2} after its first success.
 // history.Merge makes a terminal record permanent, so a phase guessed from
 // counters would latch a failure that a retry then recovers.
-func jobPhase(job *batchv1.Job) monitoringv1alpha1.ExecutionPhase {
-	for _, cond := range job.Status.Conditions {
+//
+// The deciding condition's lastTransitionTime comes back too: completionTime
+// is set only on success, so it is a failed Job's only end time.
+func jobOutcome(job *batchv1.Job) (monitoringv1alpha1.ExecutionPhase, *metav1.Time) {
+	for i := range job.Status.Conditions {
+		cond := &job.Status.Conditions[i]
 		if cond.Status != corev1.ConditionTrue {
 			continue
 		}
+		var phase monitoringv1alpha1.ExecutionPhase
 		switch cond.Type {
 		case batchv1.JobComplete, batchv1.JobSuccessCriteriaMet:
-			return monitoringv1alpha1.ExecutionPhaseSucceeded
+			phase = monitoringv1alpha1.ExecutionPhaseSucceeded
 		case batchv1.JobFailed, batchv1.JobFailureTarget:
-			return monitoringv1alpha1.ExecutionPhaseFailed
+			phase = monitoringv1alpha1.ExecutionPhaseFailed
+		default:
+			continue
 		}
+		if cond.LastTransitionTime.IsZero() {
+			return phase, nil
+		}
+		decided := cond.LastTransitionTime
+		return phase, &decided
 	}
-	return monitoringv1alpha1.ExecutionPhaseRunning
+	return monitoringv1alpha1.ExecutionPhaseRunning, nil
 }
 
 func jobToRecord(job *batchv1.Job) monitoringv1alpha1.ExecutionRecord {
+	phase, decided := jobOutcome(job)
 	rec := monitoringv1alpha1.ExecutionRecord{
 		JobName: job.Name,
-		Phase:   jobPhase(job),
+		Phase:   phase,
 	}
 	if job.Status.StartTime != nil {
 		rec.StartTime = *job.Status.StartTime
 	} else {
 		rec.StartTime = metav1.NewTime(job.CreationTimestamp.Time)
 	}
-	if job.Status.CompletionTime != nil {
-		rec.EndTime = job.Status.CompletionTime
-		dur := int32(job.Status.CompletionTime.Sub(rec.StartTime.Time).Seconds())
+	end := job.Status.CompletionTime
+	if end == nil && phase == monitoringv1alpha1.ExecutionPhaseFailed {
+		end = decided
+	}
+	if end != nil && !end.Before(&rec.StartTime) {
+		rec.EndTime = end
+		dur := int32(end.Sub(rec.StartTime.Time).Seconds())
 		rec.DurationSeconds = &dur
 	}
 	return rec
