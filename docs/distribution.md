@@ -7,7 +7,7 @@ CronGuard ships through three install paths so you can pick whichever fits your 
 Each release attaches an `install.yaml` and the CRD as standalone files:
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.2/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.3/install.yaml
 ```
 
 This is the lowest-dependency path — no Helm, no extra tooling. Suitable for clusters where Helm is not available or release operations are tightly controlled.
@@ -25,7 +25,7 @@ The overlay holds only the `PrometheusRule` of `config/prometheus/` and a `Servi
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.4.2 \
+helm install cronguard cronguard/cronguard --version 0.4.3 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -37,7 +37,7 @@ Helm 3.8+ supports OCI registries natively. The chart is published alongside the
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.4.2 \
+  --version 0.4.3 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -108,7 +108,7 @@ kubectl get events -n <ns> --field-selector involvedObject.kind=CronJobMonitor
 Helm installs the CronGuard CRD on `helm install` but does NOT modify it on `helm upgrade`, and leaves it in place on `helm uninstall`. That is Helm's design for the `crds/` directory, and Helm 4 keeps it: checked with Helm 4.2.3, where an upgrade that changed the chart's CRD schema left the cluster's CRD untouched, with and without `--server-side`. To upgrade the CRD when the chart bumps it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.4.2/charts/cronguard/crds/cronjobmonitors.yaml
+kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.4.3/charts/cronguard/crds/cronjobmonitors.yaml
 ```
 
 ## Verifying artifacts
@@ -117,10 +117,10 @@ Every release publishes a GitHub build attestation (SLSA provenance, signed thro
 
 ```bash
 # Container image: provenance must name this repository's release workflow
-gh attestation verify oci://ghcr.io/dmazhukov/cronguard:0.4.2 --owner dmazhukov
+gh attestation verify oci://ghcr.io/dmazhukov/cronguard:0.4.3 --owner dmazhukov
 
 # Raw manifests: download, then check the attestation and the checksum
-gh release download v0.4.2 --repo dmazhukov/cronguard --pattern 'install.yaml' --pattern 'checksums.txt'
+gh release download v0.4.3 --repo dmazhukov/cronguard --pattern 'install.yaml' --pattern 'checksums.txt'
 gh attestation verify install.yaml --owner dmazhukov
 sha256sum --check --ignore-missing checksums.txt
 ```
@@ -131,12 +131,12 @@ The image and the Helm OCI chart also carry cosign keyless signatures:
 cosign verify \
   --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/dmazhukov/cronguard:0.4.2
+  ghcr.io/dmazhukov/cronguard:0.4.3
 
 cosign verify \
   --certificate-identity-regexp '^https://github.com/dmazhukov/cronguard/.github/workflows/release.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/dmazhukov/charts/cronguard:0.4.2
+  ghcr.io/dmazhukov/charts/cronguard:0.4.3
 ```
 
 The signatures are stored as OCI referrers in the Sigstore bundle format. cosign v3 finds them as shown; cosign 2.x needs `--new-bundle-format` (checked with 2.6.1) and without it reports `no signatures found`.
@@ -147,5 +147,5 @@ Charts released after v0.4.1 also carry a Helm provenance file (`.prov`), signed
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dmazhukov/cronguard/main/docs/chart-signing-key.asc | gpg --dearmor > cronguard-keyring.gpg
-helm pull oci://ghcr.io/dmazhukov/charts/cronguard --version 0.4.2 --verify --keyring cronguard-keyring.gpg
+helm pull oci://ghcr.io/dmazhukov/charts/cronguard --version 0.4.3 --verify --keyring cronguard-keyring.gpg
 ```
