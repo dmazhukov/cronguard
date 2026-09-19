@@ -74,78 +74,102 @@ fi
 log "Status of CronJobMonitor"
 kubectl -n "$SAMPLE_NS" get cronjobmonitor nightly-settlement -o yaml
 
-log "Scraping /metrics"
+log "Applying scenario fixtures"
+kubectl apply -n "$SAMPLE_NS" -f test/e2e/fixtures.yaml
 
-# Two flake classes have surfaced here in nightly runs:
-#
-# 1. Endpoint-update lag: kubectl port-forward against a Service goes
-#    through the EndpointSlice, which the endpoint controller updates
-#    asynchronously after the pod becomes Ready. The lag can be
-#    1-2 seconds. During that window port-forward sees no endpoint
-#    or a stale pod with phase=Pending, and exits non-recoverably.
-# 2. apiserver watch-cache stale read: even after Endpoint is correct,
-#    the cached pod.status.phase the port-forward subprocess reads can
-#    briefly lag the live state.
-#
-# Belt-and-suspenders: target the Deployment directly (kubectl resolves
-# it to a Ready pod, no Endpoint indirection), and retry the port-forward
-# startup itself if the background process exits within 2 seconds —
-# that's the signature of "saw stale state, gave up".
-PF_PID=""
-for attempt in 1 2 3 4 5; do
-  kubectl -n "$RELEASE_NS" port-forward deploy/cronguard 18080:8080 >/tmp/pf.log 2>&1 &
-  PF_PID=$!
-  sleep 2
-  if kill -0 "$PF_PID" 2>/dev/null; then
-    log "port-forward up (attempt $attempt, pid $PF_PID)"
-    break
+# wait_reason MONITOR TYPE REASON [TIMEOUT]: wait until the monitor's
+# condition TYPE carries REASON. kubectl wait accepts a JSONPath value match.
+wait_reason() {
+  local mon="$1" typ="$2" reason="$3" to="${4:-120s}"
+  if ! kubectl -n "$SAMPLE_NS" wait "cronjobmonitor/$mon" --timeout="$to" \
+      --for=jsonpath="{.status.conditions[?(@.type==\"$typ\")].reason}=$reason"; then
+    log "$mon: condition $typ never reached reason $reason"
+    kubectl -n "$SAMPLE_NS" get cronjobmonitor "$mon" -o yaml
+    exit 1
   fi
-  log "port-forward attempt $attempt died, retrying"
-  cat /tmp/pf.log >&2 || true
-  PF_PID=""
-done
-if [ -z "$PF_PID" ]; then
-  log "port-forward failed to stay up after 5 attempts"
-  cat /tmp/pf.log >&2
-  exit 1
-fi
-trap 'rc=$?; kill $PF_PID 2>/dev/null || true; cleanup $rc' EXIT
-for _ in {1..15}; do
-  if curl -sSf "http://localhost:18080/metrics" >/dev/null 2>&1; then break; fi
-  sleep 1
-done
+}
 
-if curl -sSf "http://localhost:18080/metrics" >/tmp/metrics.txt; then
-  log "Got /metrics ($(wc -l </tmp/metrics.txt) lines)"
-else
-  log "curl /metrics failed"
-  cat /tmp/pf.log >&2
+log "@every on a CronJob is reported, not measured"
+wait_reason e2e-every-mon Reconciled InvalidSchedule
+
+log "A schedule with no calendar date is reported, not shown healthy"
+wait_reason e2e-feb30-mon Reconciled UnsatisfiableSchedule
+
+log "A named time zone resolves inside the distroless image"
+wait_reason e2e-tz-mon Reconciled ReconcileSuccess
+tz=$(kubectl -n "$SAMPLE_NS" get cronjobmonitor e2e-tz-mon -o jsonpath='{.status.resolvedTimeZone}')
+next=$(kubectl -n "$SAMPLE_NS" get cronjobmonitor e2e-tz-mon -o jsonpath='{.status.nextExpectedTime}')
+if [[ "$tz" != "Asia/Singapore" || -z "$next" ]]; then
+  log "e2e-tz-mon: resolvedTimeZone=$tz nextExpectedTime=$next"
   exit 1
 fi
 
-# Required metric families.
+log "A Job seen running and then failed counts as a failure"
+wait_reason e2e-fail-mon ExecutionHealthy ConsecutiveFailures 240s
+
+log "Missed runs accumulate"
+wait_reason e2e-missed-mon ScheduleHealthy ScheduleMissed 180s
+
+# Scrape from inside the cluster, through the metrics Service by its DNS
+# name. This exercises the Service and its named port, which a port-forward
+# to the Deployment bypasses, and it avoids the port-forward flake classes
+# (EndpointSlice lag, stale pod phase) the nightly runs used to hit.
+METRICS_URL="http://cronguard-metrics.${RELEASE_NS}.svc:8080/metrics"
+scrape() {
+  kubectl -n "$SAMPLE_NS" run "e2e-scrape-$RANDOM" --image=busybox:1.36 --restart=Never --rm -i --quiet \
+    --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"s","image":"busybox:1.36","command":["wget","-qO-","'"$METRICS_URL"'"],"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}' \
+    2>/dev/null
+}
+
+# Every family the operator can emit. last_duration appears once a Job
+# finished with a completionTime (the sample succeeds every two minutes);
+# missed_runs_total once a miss has been counted.
 REQUIRED=(
-  "cronguard_consecutive_failures"
-  "cronguard_missed_runs"
-  "cronguard_schedule_drift_seconds"
-  "cronguard_condition"
-  "cronguard_reconcile_total"
-  "cronguard_build_info"
+  cronguard_last_success_timestamp_seconds
+  cronguard_last_failure_timestamp_seconds
+  cronguard_last_schedule_timestamp_seconds
+  cronguard_next_expected_timestamp_seconds
+  cronguard_consecutive_failures
+  cronguard_missed_runs
+  cronguard_schedule_drift_seconds
+  cronguard_last_duration_seconds
+  cronguard_running_jobs
+  cronguard_condition
+  cronguard_missed_runs_total
+  cronguard_reconcile_total
+  cronguard_reconcile_duration_seconds
+  cronguard_build_info
 )
-missing=0
-for m in "${REQUIRED[@]}"; do
-  if ! grep -q "^${m}\b" /tmp/metrics.txt; then
-    log "MISSING metric: $m"
-    missing=1
-  fi
+metrics=""
+for attempt in $(seq 1 24); do
+  metrics="$(scrape || true)"
+  missing=()
+  for m in "${REQUIRED[@]}"; do
+    # Histograms appear only as _bucket/_sum/_count series.
+    grep -Eq "^${m}(_bucket|_sum|_count)?[{ ]" <<<"$metrics" || missing+=("$m")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && break
+  log "attempt $attempt: waiting for ${missing[*]}"
+  sleep 10
 done
-if [[ "$missing" -ne 0 ]]; then
-  log "metric assertion failed"
-  head -100 /tmp/metrics.txt >&2
+if [[ ${#missing[@]} -ne 0 ]]; then
+  log "MISSING metric families: ${missing[*]}"
+  head -120 <<<"$metrics" >&2
   exit 1
 fi
+log "All ${#REQUIRED[@]} metric families present via the Service ($(wc -l <<<"$metrics") lines)"
 
-log "All required metrics present"
+if grep -q '^cronguard_next_expected_timestamp_seconds{[^}]*name="e2e-feb30-mon"' <<<"$metrics"; then
+  log "next_expected is published for a schedule that never fires"
+  exit 1
+fi
+grep -q '^cronguard_next_expected_timestamp_seconds{[^}]*name="e2e-tz-mon"' <<<"$metrics" \
+  || { log "next_expected missing for e2e-tz-mon"; exit 1; }
+failures=$(grep '^cronguard_consecutive_failures{[^}]*name="e2e-fail-mon"' <<<"$metrics" | awk '{print $2}')
+if [[ -z "$failures" || "$failures" == "0" ]]; then
+  log "cronguard_consecutive_failures for e2e-fail-mon is '${failures}'"
+  exit 1
+fi
 
 log "Uninstall"
 helm uninstall cronguard --namespace "$RELEASE_NS"

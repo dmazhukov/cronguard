@@ -47,7 +47,7 @@ Runbooks (six for the seven alerts; the two burn-rate alerts share one):
 
   https://github.com/dmazhukov/cronguard/tree/main/docs/runbooks
 
-CRD upgrade between chart versions (Helm 3 ignores crds/ on `helm upgrade` by design):
+CRD upgrade between chart versions (Helm 3 and 4 ignore crds/ on `helm upgrade` by design):
 
   kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v{{ .Chart.AppVersion }}/charts/cronguard/crds/cronjobmonitors.yaml
 {{- if and (gt (int .Values.replicaCount) 1) (not .Values.serviceMonitor.enabled) }}

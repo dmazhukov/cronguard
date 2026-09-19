@@ -35,7 +35,7 @@ helm install cronguard ./charts/cronguard \
 helm uninstall cronguard -n cronguard-system
 ```
 
-The CRD is **not** removed by `helm uninstall` (Helm 3 design). Drop it explicitly when you want to forget the operator:
+The CRD is **not** removed by `helm uninstall` (Helm's design for `crds/`, unchanged in Helm 4). Drop it explicitly when you want to forget the operator:
 
 ```bash
 kubectl delete crd cronjobmonitors.monitoring.cronguard.io
@@ -111,7 +111,7 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 
 ## Upgrading
 
-`helm upgrade` rolls Deployment, Service, RBAC, and ServiceMonitor templates. The CRD is **not** touched on upgrade — Helm 3 only installs CRDs on `helm install`. To upgrade the schema:
+`helm upgrade` rolls Deployment, Service, RBAC, and ServiceMonitor templates. The CRD is **not** touched on upgrade — Helm installs CRDs from `crds/` only on `helm install`, in Helm 4 as in Helm 3 (checked with 4.2.3, with and without `--server-side`). To upgrade the schema:
 
 ```bash
 kubectl apply -f charts/cronguard/crds/cronjobmonitors.yaml
@@ -120,7 +120,7 @@ helm upgrade cronguard ./charts/cronguard -n cronguard-system
 
 ## CRD management notes
 
-The chart ships the CRD in `crds/cronjobmonitors.yaml`. Helm 3 treats `crds/` specially: contents are installed once on `helm install` and ignored on `helm upgrade`. If you manage CRDs externally — for example, a separate `kubectl apply` step in your delivery pipeline — install with `helm install --skip-crds`. The `crds.install` value never controlled this and is ignored.
+The chart ships the CRD in `crds/cronjobmonitors.yaml`. Helm treats `crds/` specially, in Helm 3 and Helm 4 alike: contents are installed once on `helm install` and ignored on `helm upgrade`. If you manage CRDs externally — for example, a separate `kubectl apply` step in your delivery pipeline — install with `helm install --skip-crds`. The `crds.install` value never controlled this and is ignored.
 
 ## Examples
 

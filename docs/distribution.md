@@ -96,7 +96,7 @@ kubectl get events -n <ns> --field-selector involvedObject.kind=CronJobMonitor
 
 ## CRD upgrades
 
-Helm 3 installs the CronGuard CRD on `helm install` but does NOT modify it on `helm upgrade` — this is a deliberate Helm 3 design. To upgrade the CRD when the chart bumps it:
+Helm installs the CronGuard CRD on `helm install` but does NOT modify it on `helm upgrade`, and leaves it in place on `helm uninstall`. That is Helm's design for the `crds/` directory, and Helm 4 keeps it: checked with Helm 4.2.3, where an upgrade that changed the chart's CRD schema left the cluster's CRD untouched, with and without `--server-side`. To upgrade the CRD when the chart bumps it:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/dmazhukov/cronguard/v0.4.0/charts/cronguard/crds/cronjobmonitors.yaml

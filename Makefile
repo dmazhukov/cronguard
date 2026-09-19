@@ -188,7 +188,7 @@ $(ENVTEST): $(LOCALBIN)
 sync-crd: manifests ## Regenerate the chart's CRD copy from the kustomize base.
 	@printf '%s\n%s\n' \
 	  "# This CRD is managed by Helm via the chart's crds/ directory." \
-	  "# helm install creates it; helm upgrade does NOT modify it (Helm 3 design)." \
+	  "# helm install creates it; helm upgrade does NOT modify it (Helm 3 and 4)." \
 	  > $(CHART_CRD)
 	@cat $(BASE_CRD) >> $(CHART_CRD)
 

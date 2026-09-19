@@ -1,0 +1,142 @@
+# Scenarios the e2e run asserts on top of the sample. Each CronJob is paired
+# with a monitor of the same name plus "-mon". All run as non-root busybox so
+# they also pass under a restricted Pod Security admission.
+---
+# Missed runs: the CronJob fires once a year, the monitor expects every
+# minute. Guarantees cronguard_missed_runs_total gets a series within minutes.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: e2e-missed}
+spec:
+  schedule: "0 0 1 1 *"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: main
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "exit 0"]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata: {name: e2e-missed-mon}
+spec:
+  cronJobRef: {name: e2e-missed}
+  schedule: "* * * * *"
+  gracePeriodSeconds: 0
+  alertAfterMissedRuns: 1
+---
+# A Job that is seen running and then fails. Kubernetes never sets
+# completionTime on a failed Job; this is the path that used to leave the
+# record Running forever. The sleep makes sure the operator sees it start.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: e2e-fail}
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: main
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "sleep 15; exit 1"]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata: {name: e2e-fail-mon}
+spec:
+  cronJobRef: {name: e2e-fail}
+  maxConsecutiveFailures: 1
+---
+# Kubernetes accepts @every on a CronJob; CronGuard rejects it on purpose.
+# Not suspended: the suspend check runs before the schedule is parsed, so a
+# suspended CronJob reports CronJobSuspended whatever its schedule. The first
+# run would be 30 minutes out, past the end of the test.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: e2e-every}
+spec:
+  schedule: "@every 30m"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: main
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "exit 0"]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata: {name: e2e-every-mon}
+spec:
+  cronJobRef: {name: e2e-every}
+---
+# Parses, never fires: February 30.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: e2e-feb30}
+spec:
+  schedule: "0 0 30 2 *"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: main
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "exit 0"]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata: {name: e2e-feb30-mon}
+spec:
+  cronJobRef: {name: e2e-feb30}
+---
+# Named time zone: resolves only if the image carries tzdata (it is embedded
+# in the binary; distroless static has none).
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: e2e-tz}
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Asia/Singapore
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: main
+              image: busybox:1.36
+              command: ["/bin/sh", "-c", "exit 0"]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: monitoring.cronguard.io/v1alpha1
+kind: CronJobMonitor
+metadata: {name: e2e-tz-mon}
+spec:
+  cronJobRef: {name: e2e-tz}
