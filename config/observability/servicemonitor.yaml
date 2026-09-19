@@ -1,0 +1,41 @@
+# Scrape config for the raw-manifest path, which otherwise ships no way for
+# Prometheus to find the operator. The metrics endpoint is plain HTTP without
+# authentication, so pair this with config/network-policy/.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cronguard-controller-manager
+  labels:
+    app.kubernetes.io/name: cronguard
+    app.kubernetes.io/part-of: cronguard
+spec:
+  namespaceSelector:
+    matchNames:
+      - cronguard-system
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: cronguard
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      # The series carry the monitor's namespace, and prometheus-operator sets
+      # a namespace target label of its own (the operator's) that wins the
+      # clash: the monitor's lands in exported_namespace. Copy it back, so the
+      # alerts and the dashboard read the monitor's namespace; exported_namespace
+      # stays, so a Prometheus that enforces its own namespace label afterwards
+      # still keeps the monitor's. honorLabels would also let the series
+      # override job, instance and pod.
+      metricRelabelings:
+        - sourceLabels: [exported_namespace]
+          regex: (.+)
+          targetLabel: namespace
+          replacement: $1
+      # With more than one replica, keep only the leader
+      # (cronguard.io/role: leader) or Prometheus double-counts every gauge:
+      # relabelings:
+      #   - sourceLabels: [__meta_kubernetes_pod_label_cronguard_io_role]
+      #     regex: leader
+      #     action: keep

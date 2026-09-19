@@ -48,6 +48,8 @@ helm install cronguard cronguard/cronguard --version 0.4.2 \
 kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.2/install.yaml
 ```
 
+`install.yaml` carries no alerts and no scrape config — they need the prometheus-operator CRDs. Add them next to it with `kustomize build config/observability | kubectl apply -f -` from a checkout, or use the chart.
+
 Apply a sample monitor:
 
 ```bash
