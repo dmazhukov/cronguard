@@ -6,9 +6,8 @@ image:
 
 imagePullSecrets: []
 
-# Extra command-line args passed to the manager binary. Useful for
-# bumping log verbosity (`--zap-log-level=2`) or pinning a specific
-# leader-election lease name without forking the chart.
+# Extra command-line args passed to the manager binary, e.g. to raise log
+# verbosity (`--zap-log-level=2`). The lease name is fixed in the binary.
 extraArgs: []
 # - --zap-log-level=2
 
@@ -35,6 +34,10 @@ namespace: ""
 
 leaderElection:
   enabled: true
+
+# Monitors reconciled in parallel (--max-concurrent-reconciles). One is
+# enough for most clusters; raise it when a slow monitor delays the rest.
+maxConcurrentReconciles: 1
 
 resources:
   requests:
@@ -92,7 +95,9 @@ prometheusRule:
       for: 15m
       severity: info
 
-# CRD installation. Helm 3 installs crds/ on install only — never on upgrade.
+# Deprecated and ignored: no template reads it. To skip the CRD, install
+# with `helm install --skip-crds`. Kept so existing values files still pass
+# the schema, which rejects unknown keys.
 crds:
   install: true
 

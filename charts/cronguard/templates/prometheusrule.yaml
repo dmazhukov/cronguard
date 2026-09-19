@@ -98,13 +98,21 @@ spec:
           # confirmed by 7-day soak (2026-05-15: 3-min replicas=0 produced
           # zero alert firings under the previous expr). `absent()` handles
           # both crashloop (series at 0) and scale-to-0 (series gone) uniformly.
+          # The namespace matcher needs a namespace label on the scraped series,
+          # which the chart's ServiceMonitor adds. cronguard_build_info itself
+          # carries none, so with any other scrape setup the matcher would
+          # match nothing and the alert would fire forever.
+          {{- if .Values.serviceMonitor.enabled }}
           expr: absent(cronguard_build_info{namespace="{{ .Release.Namespace }}"}) == 1
+          {{- else }}
+          expr: absent(cronguard_build_info) == 1
+          {{- end }}
           for: {{ .Values.prometheusRule.thresholds.operatorDown.for }}
           labels:
             severity: {{ .Values.prometheusRule.thresholds.operatorDown.severity }}
             component: cronguard
           annotations:
             summary: "CronGuard operator is down"
-            description: "Prometheus has not seen any cronguard_build_info series from namespace {{ .Release.Namespace }} for at least {{ .Values.prometheusRule.thresholds.operatorDown.for }}. The operator is crashlooping, unscheduled, scaled to 0, or unreachable."
+            description: "Prometheus has not seen any cronguard_build_info series{{ if .Values.serviceMonitor.enabled }} from namespace {{ .Release.Namespace }}{{ end }} for at least {{ .Values.prometheusRule.thresholds.operatorDown.for }}. The operator is crashlooping, unscheduled, scaled to 0, or unreachable."
             runbook_url: "https://github.com/dmazhukov/cronguard/blob/main/docs/runbooks/operator-down.md"
 {{- end }}
