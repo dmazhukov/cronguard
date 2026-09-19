@@ -105,8 +105,10 @@ Re-apply the chart with the official ServiceMonitor enabled:
 
 ```bash
 helm upgrade cronguard <chart> -n cronguard-system \
-  --reuse-values --set serviceMonitor.enabled=true
+  --reset-then-reuse-values --set serviceMonitor.enabled=true
 ```
+
+`--reset-then-reuse-values` (Helm 3.14+ and 4), not `--reuse-values`: the latter keeps the previous release's values and drops the new chart's defaults, so a value the chart added since then renders empty.
 
 Verify Prometheus actually picked it up (Prometheus UI → Status → Targets, or directly):
 
@@ -166,7 +168,7 @@ kubectl -n cronguard-system get svc cronguard-metrics \
 Both must agree on the metrics port (default `8080`). Re-apply chart values to align:
 
 ```bash
-helm upgrade cronguard <chart> -n cronguard-system --reuse-values \
+helm upgrade cronguard <chart> -n cronguard-system --reset-then-reuse-values \
   --set metrics.port=8080
 ```
 

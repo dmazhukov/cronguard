@@ -50,7 +50,10 @@ spec:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.healthProbe.port }}
             - --leader-elect={{ .Values.leaderElection.enabled }}
-            - --max-concurrent-reconciles={{ .Values.maxConcurrentReconciles }}
+            {{- /* default: `helm upgrade --reuse-values` from a release that
+                   predates this value renders it empty, and an empty
+                   flag value stops the binary at startup. */}}
+            - --max-concurrent-reconciles={{ .Values.maxConcurrentReconciles | default 1 }}
             {{- with .Values.namespace }}
             - --namespace={{ . }}
             {{- end }}

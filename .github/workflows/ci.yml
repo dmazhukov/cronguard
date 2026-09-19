@@ -163,6 +163,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the reuse-values check reads the previous tag's values
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.2.4
@@ -184,6 +186,28 @@ jobs:
             --set replicaCount=2 \
             --set podDisruptionBudget.enabled=true \
             | kubeconform -strict -summary -ignore-missing-schemas -
+
+      # `helm upgrade --reuse-values` renders the new chart with the previous
+      # release's values and none of the new defaults, so a value added since
+      # the last tag arrives unset. Setting those keys to null reproduces
+      # that; no container flag may then render with an empty value — the
+      # binary refuses to start on one.
+      - name: upgrade from the previous release with --reuse-values
+        run: |
+          set -euo pipefail
+          prev=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+          git show "$prev:charts/cronguard/values.yaml" > /tmp/prev-values.yaml
+          leaf='.. | select(tag != "!!map") | path | join(".")'
+          new_keys=$(comm -13 <(yq -r "$leaf" /tmp/prev-values.yaml | sort -u) \
+            <(yq -r "$leaf" charts/cronguard/values.yaml | sort -u) | grep -v '\.[0-9]\+$' || true)
+          args=()
+          for k in $new_keys; do args+=(--set "$k=null"); done
+          echo "keys added since $prev: ${new_keys:-none}"
+          out=$(helm template x charts/cronguard "${args[@]}")
+          if grep -nE -- '^[[:space:]]*- --[a-z0-9-]+=$' <<<"$out"; then
+            echo "::error::an upgrade with --reuse-values from $prev renders an empty flag value"
+            exit 1
+          fi
 
   # Backstop for the pre-commit gitleaks hook: hooks are opt-in, can be
   # bypassed with --no-verify, and fork PRs never run them. Scans the commits

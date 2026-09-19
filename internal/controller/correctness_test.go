@@ -1214,3 +1214,134 @@ var _ = Describe("CronJob schedules at the edge of the parser", func() {
 		Entry("April 31", "apr-31", "0 0 31 4 *", monitoringv1alpha1.ReasonUnsatisfiableSchedule),
 	)
 })
+
+// A Job's phase is terminal only once the Job controller says so with a
+// condition. Its counters move through states that look terminal and are not:
+// between a failed attempt and its retry a Job reads {active: 0, failed: 1};
+// a Job with completions: 3 reads {succeeded: 1, active: 2} after its first
+// success. History makes a terminal record permanent, so a phase guessed from
+// counters would turn a retry that later succeeds into a latched failure.
+var _ = Describe("Job phase comes from conditions, not counters", func() {
+	const ns = "cg-phase"
+
+	type step struct {
+		status   batchv1.JobStatus
+		wantRec  monitoringv1alpha1.ExecutionPhase
+		wantFail bool // LastFailureTime set
+	}
+
+	drive := func(name string, maxFail int32, steps []step) {
+		base := time.Now().Add(33 * time.Hour).Truncate(time.Minute)
+		cj := makeCronJob(ns, name, "0 * * * *")
+		job := makeOwnedJob(ns, name+"-1", cj, base.Add(-5*time.Minute))
+		cjm := monitorFor(ns, name+"-mon", name, base.Add(-2*time.Hour))
+		cjm.Spec.MaxConsecutiveFailures = maxFail
+		store := storeWith(cj, job, cjm)
+		key := types.NamespacedName{Name: name + "-mon", Namespace: ns}
+		clk := clocktesting.NewFakePassiveClock(base)
+		r := reconcilerOver(store, clk)
+
+		for i, st := range steps {
+			var live batchv1.Job
+			Expect(store.Get(ctx, types.NamespacedName{Name: name + "-1", Namespace: ns}, &live)).To(Succeed())
+			live.Status = st.status
+			Expect(store.Status().Update(ctx, &live)).To(Succeed())
+			clk.SetTime(base.Add(time.Duration(i) * time.Minute))
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+
+			var got monitoringv1alpha1.CronJobMonitor
+			Expect(store.Get(ctx, key, &got)).To(Succeed())
+			Expect(got.Status.RecentExecutions[0].Phase).To(Equal(st.wantRec), "step %d", i)
+			Expect(got.Status.LastFailureTime != nil).To(Equal(st.wantFail), "step %d: LastFailureTime", i)
+		}
+	}
+
+	start := func() *metav1.Time {
+		t := metav1.NewTime(time.Now().Add(33*time.Hour - 5*time.Minute).Truncate(time.Minute))
+		return &t
+	}
+
+	It("does not count a failed attempt that a retry recovers", func() {
+		st := start()
+		done := metav1.NewTime(st.Add(3 * time.Minute))
+		drive("retry", 1, []step{
+			{batchv1.JobStatus{StartTime: st, Active: 1}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			// pod failed, backoff before the retry: no condition yet
+			{batchv1.JobStatus{StartTime: st, Failed: 1}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			{batchv1.JobStatus{StartTime: st, Active: 1, Failed: 1}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			{batchv1.JobStatus{StartTime: st, Succeeded: 1, Failed: 1, CompletionTime: &done, Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			}}, monitoringv1alpha1.ExecutionPhaseSucceeded, false},
+		})
+	})
+
+	It("does not count one of three completions as success", func() {
+		st := start()
+		drive("multi", 1, []step{
+			{batchv1.JobStatus{StartTime: st, Active: 3}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			{batchv1.JobStatus{StartTime: st, Active: 2, Succeeded: 1}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			{batchv1.JobStatus{StartTime: st, Succeeded: 1, Failed: 7, Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+			}}, monitoringv1alpha1.ExecutionPhaseFailed, true},
+		})
+	})
+
+	It("treats FailureTarget and SuccessCriteriaMet as terminal before the final condition lands", func() {
+		st := start()
+		drive("targets", 1, []step{
+			{batchv1.JobStatus{StartTime: st, Active: 1}, monitoringv1alpha1.ExecutionPhaseRunning, false},
+			{batchv1.JobStatus{StartTime: st, Failed: 1, Conditions: []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+			}}, monitoringv1alpha1.ExecutionPhaseFailed, true},
+		})
+	})
+})
+
+// Every early return means "not measuring right now". A next expected run
+// left over from before — the CronJob was since deleted, suspended, or given
+// a schedule that no longer parses — is not an upcoming run, and the
+// collector would keep publishing it.
+var _ = Describe("next expected run on the early-return paths", func() {
+	const ns = "cg-next-early"
+
+	DescribeTable("is cleared",
+		func(name string, mutate func(cj *batchv1.CronJob) client.Object) {
+			now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+			stale := metav1.NewTime(now.Add(30 * time.Minute))
+			cj := makeCronJob(ns, name, "0 * * * *")
+			cjm := monitorFor(ns, name+"-mon", name, now.Add(-time.Hour))
+			cjm.Status.NextExpectedTime = &stale
+			objs := []client.Object{cjm}
+			if o := mutate(cj); o != nil {
+				objs = append(objs, o)
+			}
+			store := storeWith(objs...)
+			key := types.NamespacedName{Name: name + "-mon", Namespace: ns}
+
+			r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+			var got monitoringv1alpha1.CronJobMonitor
+			Expect(store.Get(ctx, key, &got)).To(Succeed())
+			Expect(got.Status.NextExpectedTime).To(BeNil())
+		},
+		Entry("CronJob deleted", "gone", func(*batchv1.CronJob) client.Object { return nil }),
+		Entry("CronJob suspended", "paused", func(cj *batchv1.CronJob) client.Object {
+			t := true
+			cj.Spec.Suspend = &t
+			return cj
+		}),
+		Entry("schedule no longer parses", "broken", func(cj *batchv1.CronJob) client.Object {
+			cj.Spec.Schedule = "61 * * * *"
+			return cj
+		}),
+		Entry("time zone no longer loads", "nowhere", func(cj *batchv1.CronJob) client.Object {
+			tz := "Mars/Olympus_Mons"
+			cj.Spec.TimeZone = &tz
+			return cj
+		}),
+	)
+})

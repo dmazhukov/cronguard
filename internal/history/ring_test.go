@@ -232,17 +232,26 @@ func TestMergeRunningFallbackStartToFailedWithEarlierStart(t *testing.T) {
 	}
 }
 
-// A stale cache can hand back a Running view of a Job this monitor already
-// recorded as terminal. History must not move backwards.
+// A terminal phase comes from the Job's final conditions, which a Job never
+// leaves, so a Running view with the same start is not newer information and
+// must not move history backwards. A Running view that started later is a
+// different Job reusing the name, and replaces the old record.
 func TestMergeTerminalIsNotReplacedByRunning(t *testing.T) {
 	start := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	for _, terminal := range []monitoringv1alpha1.ExecutionPhase{monitoringv1alpha1.ExecutionPhaseFailed, monitoringv1alpha1.ExecutionPhaseSucceeded} {
 		existing := []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start, terminal)}
-		incoming := []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start.Add(time.Second), monitoringv1alpha1.ExecutionPhaseRunning)}
 
-		merged := history.Merge(existing, incoming, 10)
-		if len(merged) != 1 || merged[0].Phase != terminal {
-			t.Fatalf("%s: got %+v, want the %s record kept", terminal, merged, terminal)
+		same := history.Merge(existing, []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start, monitoringv1alpha1.ExecutionPhaseRunning)}, 10)
+		if len(same) != 1 || same[0].Phase != terminal {
+			t.Fatalf("%s: same-start Running view replaced it: %+v", terminal, same)
+		}
+		earlier := history.Merge(existing, []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start.Add(-time.Minute), monitoringv1alpha1.ExecutionPhaseRunning)}, 10)
+		if earlier[0].Phase != terminal {
+			t.Fatalf("%s: earlier Running view replaced it: %+v", terminal, earlier)
+		}
+		reused := history.Merge(existing, []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start.Add(time.Hour), monitoringv1alpha1.ExecutionPhaseRunning)}, 10)
+		if reused[0].Phase != monitoringv1alpha1.ExecutionPhaseRunning {
+			t.Fatalf("%s: a later Job reusing the name was not shown running: %+v", terminal, reused)
 		}
 	}
 }

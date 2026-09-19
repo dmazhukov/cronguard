@@ -317,10 +317,11 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	nextExpected, satisfiable := parsed.NextSlot(now)
 	if !satisfiable {
 		// The expression parses but matches no date the calendar has — Feb 30,
-		// April 31. NextSlot, not Next: a single Next returns zero whenever the
-		// next slot is beyond robfig's five-year reach, which "0 0 29 2 *" is
-		// for most of 2096-2103, and that is not the same as never. Kubernetes accepts those on a CronJob, and our CEL never
-		// sees CronJob.spec.schedule, so this reaches us. Before the schedule
+		// April 31. Kubernetes accepts those on a CronJob, and our CEL never
+		// sees CronJob.spec.schedule, so this reaches us. NextSlot, not Next:
+		// a single Next returns zero whenever the next slot is beyond robfig's
+		// five-year reach, which "0 0 29 2 *" is for most of 2096-2103, and
+		// that is not the same as never. Before the schedule
 		// layer was bounded it showed up as a wedged worker or 100001 missed
 		// runs; without this branch it would show up as nothing at all —
 		// missed=0, drift=0, ScheduleHealthy=True, a green dashboard row for a
@@ -331,7 +332,6 @@ func (r *CronJobMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			fmt.Sprintf("schedule %q parses but matches no date on the calendar; it will never run", scheduleExpr))
 		cjm.Status.MissedRuns = 0
 		cjm.Status.ScheduleDriftSeconds = 0
-		cjm.Status.NextExpectedTime = nil
 		meta.SetStatusCondition(&cjm.Status.Conditions, metav1.Condition{
 			Type:               monitoringv1alpha1.ConditionScheduleHealthy,
 			Status:             metav1.ConditionUnknown,
@@ -512,6 +512,10 @@ func (r *CronJobMonitorReconciler) finishEarlyReturn(
 	eventType, eventReason, eventMessage string,
 	result *string,
 ) (ctrl.Result, error) {
+	// Every early return means "not measuring right now". A next run computed
+	// before the CronJob was deleted, suspended or given an unusable schedule
+	// is not an upcoming run, and the collector would keep publishing it.
+	cjm.Status.NextExpectedTime = nil
 	evaluateExecutionHealthy(cjm)
 	evaluateDurationHealthy(cjm)
 	evaluateReady(cjm)

@@ -6,17 +6,8 @@
     "thresholdSpec": {
       "type": "object",
       "properties": {
-        "for": {
-          "type": "string"
-        },
-        "severity": {
-          "type": "string",
-          "enum": [
-            "info",
-            "warning",
-            "critical"
-          ]
-        }
+        "for": {"type": "string"},
+        "severity": {"type": "string", "enum": ["info", "warning", "critical"]}
       }
     }
   },
@@ -24,192 +15,74 @@
     "image": {
       "type": "object",
       "properties": {
-        "repository": {
-          "type": "string",
-          "minLength": 1
-        },
-        "pullPolicy": {
-          "type": "string",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
-        },
-        "tag": {
-          "type": "string"
-        }
+        "repository": {"type": "string", "minLength": 1},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]},
+        "tag": {"type": "string"}
       },
-      "required": [
-        "repository",
-        "pullPolicy"
-      ]
+      "required": ["repository", "pullPolicy"]
     },
-    "imagePullSecrets": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
-    },
-    "extraArgs": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "extraEnv": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
-    },
-    "nameOverride": {
-      "type": "string"
-    },
-    "fullnameOverride": {
-      "type": "string"
-    },
-    "replicaCount": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 10
-    },
-    "namespace": {
-      "type": "string"
-    },
+    "imagePullSecrets": {"type": "array", "items": {"type": "object"}},
+    "extraArgs": {"type": "array", "items": {"type": "string"}},
+    "extraEnv": {"type": "array", "items": {"type": "object"}},
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string"},
+    "replicaCount": {"type": "integer", "minimum": 1, "maximum": 10},
+    "namespace": {"type": "string"},
     "leaderElection": {
       "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        }
-      }
+      "properties": {"enabled": {"type": "boolean"}}
     },
+    "maxConcurrentReconciles": {"type": "integer", "minimum": 1, "description": "Monitors reconciled in parallel."},
     "metrics": {
       "type": "object",
-      "properties": {
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        }
-      }
+      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
     },
     "healthProbe": {
       "type": "object",
-      "properties": {
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        }
-      }
+      "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
     },
     "serviceMonitor": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "interval": {
-          "type": "string"
-        },
-        "scrapeTimeout": {
-          "type": "string"
-        },
-        "namespace": {
-          "type": "string"
-        },
-        "labels": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "honorLabels": {
-          "type": "boolean"
-        }
+        "enabled": {"type": "boolean"},
+        "namespace": {"type": "string"},
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}},
+        "interval": {"type": "string"},
+        "scrapeTimeout": {"type": "string"},
+        "honorLabels": {"type": "boolean"}
       }
     },
     "prometheusRule": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "namespace": {
-          "type": "string"
-        },
-        "labels": {
-          "type": "object"
-        },
-        "interval": {
-          "type": "string"
-        },
+        "enabled": {"type": "boolean"},
+        "namespace": {"type": "string"},
+        "labels": {"type": "object"},
+        "interval": {"type": "string"},
         "thresholds": {
           "type": "object",
           "properties": {
-            "scheduleMissed": {
-              "$ref": "#/$defs/thresholdSpec"
-            },
-            "consecutiveFailures": {
-              "$ref": "#/$defs/thresholdSpec"
-            },
-            "durationExceeded": {
-              "$ref": "#/$defs/thresholdSpec"
-            },
-            "notReady": {
-              "$ref": "#/$defs/thresholdSpec"
-            },
-            "operatorDown": {
-              "$ref": "#/$defs/thresholdSpec"
-            },
+            "scheduleMissed": {"$ref": "#/$defs/thresholdSpec"},
+            "consecutiveFailures": {"$ref": "#/$defs/thresholdSpec"},
+            "durationExceeded": {"$ref": "#/$defs/thresholdSpec"},
+            "notReady": {"$ref": "#/$defs/thresholdSpec"},
+            "operatorDown": {"$ref": "#/$defs/thresholdSpec"},
             "missedRunsBurnFast": {
               "type": "object",
               "properties": {
-                "fastRate": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "slowRate": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "for": {
-                  "type": "string"
-                },
-                "severity": {
-                  "type": "string",
-                  "enum": [
-                    "info",
-                    "warning",
-                    "critical"
-                  ]
-                }
+                "fastRate": {"type": "number", "minimum": 0},
+                "slowRate": {"type": "number", "minimum": 0},
+                "for": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "warning", "critical"]}
               }
             },
             "missedRunsBurnSlow": {
               "type": "object",
               "properties": {
-                "fastRate": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "slowRate": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "for": {
-                  "type": "string"
-                },
-                "severity": {
-                  "type": "string",
-                  "enum": [
-                    "info",
-                    "warning",
-                    "critical"
-                  ]
-                }
+                "fastRate": {"type": "number", "minimum": 0},
+                "slowRate": {"type": "number", "minimum": 0},
+                "for": {"type": "string"},
+                "severity": {"type": "string", "enum": ["info", "warning", "critical"]}
               }
             }
           }
@@ -218,85 +91,28 @@
     },
     "crds": {
       "type": "object",
-      "properties": {
-        "install": {
-          "type": "boolean"
-        }
-      },
-      "description": "Deprecated and ignored; use helm install --skip-crds."
+      "description": "Deprecated and ignored; use helm install --skip-crds.",
+      "properties": {"install": {"type": "boolean"}}
     },
-    "podAnnotations": {
-      "type": "object"
-    },
-    "podLabels": {
-      "type": "object"
-    },
-    "podSecurityContext": {
-      "type": "object"
-    },
-    "securityContext": {
-      "type": "object"
-    },
-    "resources": {
-      "type": "object"
-    },
-    "nodeSelector": {
-      "type": "object"
-    },
-    "tolerations": {
-      "type": "array"
-    },
-    "affinity": {
-      "type": "object"
-    },
-    "topologySpreadConstraints": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
-    },
+    "podAnnotations": {"type": "object"},
+    "podLabels": {"type": "object"},
+    "podSecurityContext": {"type": "object"},
+    "securityContext": {"type": "object"},
+    "resources": {"type": "object"},
+    "nodeSelector": {"type": "object"},
+    "tolerations": {"type": "array"},
+    "affinity": {"type": "object"},
+    "topologySpreadConstraints": {"type": "array", "items": {"type": "object"}},
     "podDisruptionBudget": {
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "minAvailable": {
-          "oneOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "string"
-            }
-          ]
-        },
-        "maxUnavailable": {
-          "oneOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "string"
-            }
-          ]
-        }
+        "enabled": {"type": "boolean"},
+        "minAvailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]},
+        "maxUnavailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]}
       }
     },
-    "priorityClassName": {
-      "type": "string"
-    },
-    "terminationGracePeriodSeconds": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "serviceAccount": {
-      "type": "object"
-    },
-    "maxConcurrentReconciles": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Monitors reconciled in parallel."
-    }
+    "priorityClassName": {"type": "string"},
+    "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1},
+    "serviceAccount": {"type": "object"}
   }
 }
