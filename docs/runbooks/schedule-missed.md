@@ -59,6 +59,11 @@ User-visible impact: the Job's downstream output is now stale and getting staler
 - **The operator was down longer than the Job TTL.** Runs that completed and were garbage-collected during the outage are not charged as missed — the CronJob's own `status.lastScheduleTime` is used as a floor. But if kube-controller-manager *also* went down and recovered before the operator did, its single catch-up stamp erases the gap and those misses go uncounted. See [ADR 0001](../adr/0001-cronjob-status-as-missed-run-floor.md).
 - Missing ServiceAccount or RBAC the Job pod needs to start.
 
+### Known Kubernetes causes
+
+- **Before 1.37: the CronJob controller loses track of a Job it created** ([kubernetes#136920](https://github.com/kubernetes/kubernetes/pull/136920)). If kube-controller-manager created the Job but had not recorded it yet, its next look-up asks for the Job without a namespace, gets not-found and keeps retrying. The Job runs, but it is missing from `CronJob.status.active`, `lastScheduleTime` does not move, and the CronJob collects `UnexpectedJob` warnings. CronGuard sees the run through the Job itself; the stale `lastScheduleTime` matters only if the operator was also down and the Job was garbage-collected before it came back, because that timestamp is then the floor for counting misses ([ADR 0001](../adr/0001-cronjob-status-as-missed-run-floor.md)).
+- **Since 1.31, fixed in 1.37.0, 1.36.3, 1.35.7 and 1.34.10: a Job with several pods fails late** ([kubernetes#139457](https://github.com/kubernetes/kubernetes/pull/139457)). When one pod fails while others are Ready, the Job controller's status update is rejected during pod-creation backoff, the Job's counters freeze and its pods stay Terminating for up to about ten minutes. Under `concurrencyPolicy: Forbid` the Job holds the slot that long and the next run is skipped.
+
 ## Remediation
 
 ### Concurrency policy blocking starts

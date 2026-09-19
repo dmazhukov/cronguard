@@ -53,6 +53,11 @@ The `info` severity is intentional: this fires before the SLO is hard-broken, wh
 - Pod evicted and restarted mid-run, so total time is spread across multiple chunks.
 - Network throughput cap on data transfer (cross-AZ, NAT gateway saturation).
 
+### Known Kubernetes causes
+
+- **Since 1.31, fixed in 1.37.0, 1.36.3, 1.35.7 and 1.34.10: a failed Job with several pods is failed late** ([kubernetes#139457](https://github.com/kubernetes/kubernetes/pull/139457)). The Job controller's status update is rejected during pod-creation backoff and the pods stay Terminating for up to about ten minutes, which a failed run's duration includes.
+- **A suspended and resumed Job is measured from its last resume.** Kubernetes resets `status.startTime` on resume, and from 1.36 (1.35 behind a feature gate) also clears it while the Job is suspended ([kubernetes#135104](https://github.com/kubernetes/kubernetes/pull/135104)). Time spent queued — under Kueue, or with `suspend: true` in the job template — is not part of the duration CronGuard reports, so a run that looks late to its consumers can still be within budget here.
+
 ## Remediation
 
 ### Confirm whether it is genuine growth or a regression
