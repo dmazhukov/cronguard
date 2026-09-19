@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Job seen while running and then failing is now counted as a failure.** Kubernetes sets `status.completionTime` only when a Job succeeds, and history replaced a Running record only when an end time appeared or the start moved later, so a Job the operator observed Running and that then failed stayed Running in `status.recentExecutions` until it was garbage-collected. The operator reconciles on Job events, so it sees nearly every Job start: `cronguard_consecutive_failures` stayed at 0, `ExecutionHealthy` never went False, `cronguard_last_failure_timestamp_seconds` never moved, and `CronGuardConsecutiveFailures` could not fire for those failures, while `cronguard_running_jobs` counted the failed Job as running. The phase now decides first: a terminal view of a Job always replaces a Running one and never the reverse. Only failures of Jobs first seen already finished were counted before, which is also why the envtest suite, whose failed Jobs all exist before their monitor, never caught it. **Expect `CronGuardConsecutiveFailures` to start firing** on CronJobs that have been failing unnoticed.
+
 ### Added
 
 - **OpenSSF Scorecard** runs weekly and on every push to `main`, publishes to scorecard.dev and code scanning; badge in the README next to the new Go Reference badge.

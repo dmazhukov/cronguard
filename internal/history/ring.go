@@ -56,9 +56,19 @@ func Merge(existing, incoming []monitoringv1alpha1.ExecutionRecord, limit int) [
 }
 
 // shouldReplace returns true when the new record supersedes the existing one.
-// Later StartTime wins; on equal StartTime, a record with EndTime beats one
-// without (a completed Job supersedes a Running snapshot).
+// Both describe the same Job (Merge keys by JobName), so the phase decides
+// first: a terminal view always replaces a Running one, and a Running view
+// never replaces a terminal one. The phase is the only reliable signal here —
+// Kubernetes sets status.completionTime only when a Job succeeds, so a failed
+// Job never gains an EndTime, and the first Running sighting can carry the
+// creationTimestamp fallback while the terminal view carries the real, earlier
+// status.startTime. Within the same phase class, a later StartTime wins, and
+// on equal StartTime a record with an EndTime beats one without.
 func shouldReplace(prev, next monitoringv1alpha1.ExecutionRecord) bool {
+	prevTerminal, nextTerminal := isTerminal(prev.Phase), isTerminal(next.Phase)
+	if nextTerminal != prevTerminal {
+		return nextTerminal
+	}
 	if next.StartTime.After(prev.StartTime.Time) {
 		return true
 	}
@@ -66,4 +76,8 @@ func shouldReplace(prev, next monitoringv1alpha1.ExecutionRecord) bool {
 		return true
 	}
 	return false
+}
+
+func isTerminal(p monitoringv1alpha1.ExecutionPhase) bool {
+	return p == monitoringv1alpha1.ExecutionPhaseSucceeded || p == monitoringv1alpha1.ExecutionPhaseFailed
 }
