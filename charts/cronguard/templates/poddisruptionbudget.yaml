@@ -1,5 +1,7 @@
-{{- if .Values.podDisruptionBudget.enabled }}
-{{- if and (eq (int .Values.replicaCount) 1) .Values.podDisruptionBudget.enabled }}
+{{- /* Absent in charts before 0.2.7, which --reuse-values brings along. */}}
+{{- $pdb := .Values.podDisruptionBudget | default dict }}
+{{- if $pdb.enabled }}
+{{- if eq (int .Values.replicaCount) 1 }}
 {{- /*
 A PDB on a single-replica Deployment cannot block voluntary disruption
 (maxSurge: 0 in our RollingUpdate strategy means there's never a second
@@ -16,10 +18,10 @@ metadata:
   labels:
     {{- include "cronguard.labels" . | nindent 4 }}
 spec:
-  {{- if .Values.podDisruptionBudget.minAvailable }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
-  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
   {{- end }}
   selector:
     matchLabels:

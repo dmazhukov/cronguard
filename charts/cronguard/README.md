@@ -106,6 +106,8 @@ kubectl delete crd cronjobmonitors.monitoring.cronguard.io
 | `podDisruptionBudget.enabled` | boolean | `false` | Render a `PodDisruptionBudget`. Only meaningful when `replicaCount > 1`. |
 | `podDisruptionBudget.minAvailable` | integer | `1` | Minimum available pods (mutually exclusive with `maxUnavailable`). |
 | `podDisruptionBudget.maxUnavailable` | integer | _unset_ | Maximum unavailable pods (mutually exclusive with `minAvailable`). |
+| `networkPolicy.enabled` | boolean | `false` | Render an ingress-only `NetworkPolicy` for the operator pod. `/metrics` is plain HTTP without authentication; on a CNI that enforces NetworkPolicy this limits who can read it. The health port stays open for kubelet probes, egress is not restricted. |
+| `networkPolicy.metricsFrom` | list | `[]` | `NetworkPolicyPeer` entries allowed to scrape `/metrics`, e.g. `namespaceSelector.matchLabels."kubernetes.io/metadata.name": monitoring`. Required when enabled: a rule with no peers would admit every source, so the chart refuses to render. |
 | `priorityClassName` | string | `""` | Pod priority class. |
 | `terminationGracePeriodSeconds` | integer | `30` | Pod termination grace period. |
 

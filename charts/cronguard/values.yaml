@@ -140,6 +140,19 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1   # mutually exclusive with minAvailable
 
+# NetworkPolicy for the operator pod, ingress only. /metrics is plain HTTP
+# with no authentication, so on a CNI that enforces NetworkPolicy this is what
+# keeps it from being readable by every pod. The health port stays open for
+# kubelet probes; egress to the API server is not restricted.
+networkPolicy:
+  enabled: false
+  # Who may scrape /metrics, as NetworkPolicyPeer entries; required when
+  # enabled. For a Prometheus in the "monitoring" namespace:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         kubernetes.io/metadata.name: monitoring
+  metricsFrom: []
+
 priorityClassName: ""
 
 terminationGracePeriodSeconds: 30
