@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Chart value `networkPolicy`**: an opt-in, ingress-only `NetworkPolicy` for the operator pod that admits `/metrics` scrapes only from the peers in `networkPolicy.metricsFrom` and leaves the health port open for kubelet probes. `/metrics` is plain HTTP without authentication; until now only the kustomize path had a policy (`config/network-policy/`). The chart refuses to render with the policy enabled and no peers listed, since such a rule would admit every source.
 - **The Helm chart carries a PGP provenance file (`.prov`)** in the gh-pages repository and in the OCI chart, so `helm install --verify` and `helm pull --verify` check it, and Artifact Hub shows the chart as signed. Artifact Hub reads cosign signatures only for listings registered from an OCI registry, and CronGuard's listing comes from gh-pages, where Artifact Hub looks for a `.prov` file. The public key is `docs/chart-signing-key.asc`, fingerprint `D8D2 3047 F2F6 6F57 F4E7 0514 006E 9901 74AB 7D61`. The cosign signature on the OCI chart stays.
+
+### Changed
+
+- **CI renders every chart change the way `helm upgrade --reuse-values` would, from every release that shipped a chart**: the new templates against each tag's `values.yaml` in place of the chart's own. That is what Helm does, and it keeps those old defaults in the new release, so a user who only upgrades this way carries the defaults of the version they first installed. The earlier check compared with the last tag only and unset just the new leaf keys, so it missed a template reading a map the old values do not have at all.
 
 ### Fixed
 
 - **A failed run has an end time and a duration.** Kubernetes sets `status.completionTime` only when a Job succeeds, so a failed run was recorded with no end: `lastFailureTime` and `cronguard_last_failure_timestamp_seconds` showed when the failed run started, and `DurationHealthy` skipped the run and judged the last run with a duration instead. A Job stopped by `activeDeadlineSeconds` for running too long therefore never tripped `DurationExceeded` if an earlier run had been quick. The end is now the `lastTransitionTime` of the condition that failed the Job (`FailureTarget`, or `Failed` without one), and `cronguard_last_duration_seconds` covers failed runs too. A failed run counts only against the budget: one that ran to `maxDurationSeconds` or past it sets `DurationExceeded`, while a quick failure leaves the verdict to the last run that succeeded, since it says nothing about how long the Job takes to finish. **Expect `DurationExceeded` on monitors whose last run failed after running out of budget.**
+- **`helm upgrade --reuse-values` from chart 0.2.0–0.2.6 no longer fails to render.** Those releases had no `serviceAccount` (before 0.2.3) or `podDisruptionBudget` (before 0.2.7) block, and the templates read fields of the missing map. A missing `serviceAccount` block now means the account is created, as those releases always did.
 - **Docs: verifying the cosign signatures of 0.4.1.** The signatures are OCI referrers in the Sigstore bundle format: cosign v3 finds them, cosign 2.x reports `no signatures found` unless given `--new-bundle-format`. `docs/distribution.md` named v0.5.0 as the first signed release; it is v0.4.1.
 
 ## [0.4.1] - 2026-09-19

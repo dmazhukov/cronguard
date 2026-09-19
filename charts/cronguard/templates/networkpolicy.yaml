@@ -1,0 +1,32 @@
+{{- /* with, not .Values.networkPolicy.enabled: an upgrade with --reuse-values
+from a release without this block has no networkPolicy map at all. */}}
+{{- with .Values.networkPolicy }}
+{{- if .enabled }}
+{{- if not .metricsFrom }}
+{{- fail "networkPolicy.metricsFrom must list who may scrape /metrics: a rule with no peers admits every source" }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cronguard.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cronguard.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cronguard.selectorLabels" $ | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- toYaml .metricsFrom | nindent 8 }}
+      ports:
+        - port: metrics
+          protocol: TCP
+    # Probes come from the kubelet, which some CNIs hold to policy too.
+    - ports:
+        - port: health
+          protocol: TCP
+{{- end }}
+{{- end }}

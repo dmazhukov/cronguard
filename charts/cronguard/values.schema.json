@@ -3,6 +3,26 @@
   "type": "object",
   "additionalProperties": false,
   "$defs": {
+    "labelSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": {"type": "object", "additionalProperties": {"type": "string"}},
+        "matchExpressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "operator"],
+            "additionalProperties": false,
+            "properties": {
+              "key": {"type": "string"},
+              "operator": {"enum": ["In", "NotIn", "Exists", "DoesNotExist"]},
+              "values": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
     "thresholdSpec": {
       "type": "object",
       "properties": {
@@ -109,6 +129,33 @@
         "enabled": {"type": "boolean"},
         "minAvailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]},
         "maxUnavailable": {"oneOf": [{"type": "integer"}, {"type": "string"}]}
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "metricsFrom": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "podSelector": {"$ref": "#/$defs/labelSelector"},
+              "namespaceSelector": {"$ref": "#/$defs/labelSelector"},
+              "ipBlock": {
+                "type": "object",
+                "required": ["cidr"],
+                "additionalProperties": false,
+                "properties": {
+                  "cidr": {"type": "string"},
+                  "except": {"type": "array", "items": {"type": "string"}}
+                }
+              }
+            }
+          }
+        }
       }
     },
     "priorityClassName": {"type": "string"},

@@ -61,9 +61,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 ServiceAccount name.
 */}}
 {{- define "cronguard.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "cronguard.fullname" .) .Values.serviceAccount.name }}
+{{- $sa := .Values.serviceAccount | default dict }}
+{{- if dig "create" true $sa }}
+{{- default (include "cronguard.fullname" .) $sa.name }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- default "default" $sa.name }}
 {{- end }}
 {{- end }}

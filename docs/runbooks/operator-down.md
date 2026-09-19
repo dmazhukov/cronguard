@@ -126,7 +126,9 @@ If a target appears under `droppedTargets`, the relabeling rules excluded it —
 kubectl -n cronguard-system get networkpolicies
 ```
 
-If a default-deny is in place, add an explicit allow from the Prometheus namespace:
+If the chart's own policy is listed (named like the release, rendered with `networkPolicy.enabled=true`), the likely cause is a `networkPolicy.metricsFrom` that does not match Prometheus: a peer with only a `podSelector` matches pods in the operator's namespace, not Prometheus's. Add a `namespaceSelector` for Prometheus's namespace.
+
+If a default-deny is in place, allow the Prometheus namespace. With the Helm chart, set `networkPolicy.enabled=true` and list it in `networkPolicy.metricsFrom`; otherwise apply an explicit allow:
 
 ```yaml
 # scrape-allow.yaml

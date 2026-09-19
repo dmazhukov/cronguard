@@ -201,29 +201,40 @@ jobs:
             --set prometheusRule.enabled=true \
             --set replicaCount=2 \
             --set podDisruptionBudget.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set-json 'networkPolicy.metricsFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}}]' \
             | kubeconform -strict -summary -ignore-missing-schemas -
 
-      # `helm upgrade --reuse-values` renders the new chart with the previous
-      # release's values and none of the new defaults, so a value added since
-      # the last tag arrives unset. Setting those keys to null reproduces
-      # that; no container flag may then render with an empty value — the
-      # binary refuses to start on one.
-      - name: upgrade from the previous release with --reuse-values
+      # `helm upgrade --reuse-values` renders the new templates against the
+      # values of the release being upgraded: Helm replaces the chart's
+      # defaults with the old ones (chart.Values = oldVals in
+      # pkg/action/upgrade.go) and stores them in the new release, so a user
+      # who only ever upgrades this way keeps the defaults of the version they
+      # first installed. Render the chart against the values.yaml of every
+      # tag that shipped one. A template reading a map those values lack fails
+      # the render; no container flag may come out empty, the binary refuses
+      # one.
+      - name: upgrade from every earlier release with --reuse-values
         run: |
           set -euo pipefail
-          prev=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
-          git show "$prev:charts/cronguard/values.yaml" > /tmp/prev-values.yaml
-          leaf='.. | select(tag != "!!map") | path | join(".")'
-          new_keys=$(comm -13 <(yq -r "$leaf" /tmp/prev-values.yaml | sort -u) \
-            <(yq -r "$leaf" charts/cronguard/values.yaml | sort -u) | grep -v '\.[0-9]\+$' || true)
-          args=()
-          for k in $new_keys; do args+=(--set "$k=null"); done
-          echo "keys added since $prev: ${new_keys:-none}"
-          out=$(helm template x charts/cronguard "${args[@]}")
-          if grep -nE -- '^[[:space:]]*- --[a-z0-9-]+=$' <<<"$out"; then
-            echo "::error::an upgrade with --reuse-values from $prev renders an empty flag value"
+          for tag in $(git tag -l 'v*' --sort=v:refname); do
+            git cat-file -e "${tag}:charts/cronguard/values.yaml" 2>/dev/null || continue
+            rm -rf /tmp/reuse && cp -r charts/cronguard /tmp/reuse
+            git show "${tag}:charts/cronguard/values.yaml" > /tmp/reuse/values.yaml
+            out=$(helm template x /tmp/reuse) || { echo "::error::the chart does not render with the values of $tag"; exit 1; }
+            if grep -nE -- '^[[:space:]]*- --[a-z0-9-]+=$' <<<"$out"; then
+              echo "::error::an upgrade with --reuse-values from $tag renders an empty flag value"
+              exit 1
+            fi
+            echo "renders with the values of $tag"
+          done
+      - name: networkPolicy refuses to render without peers
+        run: |
+          if err=$(helm template x charts/cronguard --set networkPolicy.enabled=true 2>&1 >/dev/null); then
+            echo "::error::networkPolicy.enabled with no metricsFrom rendered a policy that admits every source"
             exit 1
           fi
+          grep -q 'networkPolicy.metricsFrom must list' <<<"$err" || { echo "::error::failed for another reason: $err"; exit 1; }
 
   # Backstop for the pre-commit gitleaks hook: hooks are opt-in, can be
   # bypassed with --no-verify, and fork PRs never run them. Scans the commits
