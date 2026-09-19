@@ -94,6 +94,15 @@ var _ = BeforeSuite(func() {
 	}, 10*time.Second, 100*time.Millisecond).Should(BeTrue())
 })
 
+// Several specs move the shared fake clock hours ahead to accumulate missed
+// runs and never move it back, so every later spec used to inherit a clock
+// that depended on which specs ran before it. Reset it for each spec.
+var _ = BeforeEach(func() {
+	if testClock != nil {
+		testClock.SetTime(time.Now())
+	}
+})
+
 var _ = AfterSuite(func() {
 	cancel()
 	Expect(testEnv.Stop()).To(Succeed())

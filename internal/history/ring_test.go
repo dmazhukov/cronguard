@@ -197,3 +197,92 @@ func TestMergePreservesDriftAnnotations(t *testing.T) {
 		t.Errorf("DriftSeconds = %v, want %d", rec.DriftSeconds, driftSec)
 	}
 }
+
+// A Job the operator first saw Running and that then failed arrives with the
+// same StartTime and no EndTime: Kubernetes sets status.completionTime only
+// when a Job succeeds. The terminal phase alone must be enough to replace the
+// Running record, or the failure is never counted.
+func TestMergeRunningToFailedWithoutEndTime(t *testing.T) {
+	start := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	existing := []monitoringv1alpha1.ExecutionRecord{rec("nightly-1", start, monitoringv1alpha1.ExecutionPhaseRunning)}
+	incoming := []monitoringv1alpha1.ExecutionRecord{rec("nightly-1", start, monitoringv1alpha1.ExecutionPhaseFailed)}
+
+	merged := history.Merge(existing, incoming, 10)
+	if len(merged) != 1 || merged[0].Phase != monitoringv1alpha1.ExecutionPhaseFailed {
+		t.Fatalf("got %+v, want one Failed record", merged)
+	}
+}
+
+// The first sighting can come from a cache that has the Job but not yet its
+// status, so the Running record's StartTime is the creationTimestamp
+// fallback. The terminal record then carries the real, earlier
+// status.startTime. Same Job, terminal phase: it must still win.
+func TestMergeRunningFallbackStartToFailedWithEarlierStart(t *testing.T) {
+	created := time.Date(2026, 9, 19, 12, 0, 5, 0, time.UTC)
+	started := created.Add(-30 * time.Minute)
+	existing := []monitoringv1alpha1.ExecutionRecord{rec("nightly-2", created, monitoringv1alpha1.ExecutionPhaseRunning)}
+	incoming := []monitoringv1alpha1.ExecutionRecord{rec("nightly-2", started, monitoringv1alpha1.ExecutionPhaseFailed)}
+
+	merged := history.Merge(existing, incoming, 10)
+	if len(merged) != 1 || merged[0].Phase != monitoringv1alpha1.ExecutionPhaseFailed {
+		t.Fatalf("got %+v, want one Failed record", merged)
+	}
+	if !merged[0].StartTime.Time.Equal(started) {
+		t.Fatalf("StartTime = %v, want the Job's real start %v", merged[0].StartTime, started)
+	}
+}
+
+// A stale cache can hand back a Running view of a Job this monitor already
+// recorded as terminal. History must not move backwards.
+func TestMergeTerminalIsNotReplacedByRunning(t *testing.T) {
+	start := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	for _, terminal := range []monitoringv1alpha1.ExecutionPhase{monitoringv1alpha1.ExecutionPhaseFailed, monitoringv1alpha1.ExecutionPhaseSucceeded} {
+		existing := []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start, terminal)}
+		incoming := []monitoringv1alpha1.ExecutionRecord{rec("nightly-3", start.Add(time.Second), monitoringv1alpha1.ExecutionPhaseRunning)}
+
+		merged := history.Merge(existing, incoming, 10)
+		if len(merged) != 1 || merged[0].Phase != terminal {
+			t.Fatalf("%s: got %+v, want the %s record kept", terminal, merged, terminal)
+		}
+	}
+}
+
+// Within one phase class the older rules still decide. A Job is Succeeded as
+// soon as status.succeeded > 0, which can be observed before the Complete
+// condition and completionTime land; the later view with an EndTime must
+// replace the earlier one (it is what yields the run's duration), and a
+// stale view without one must not undo it.
+func TestMergeSucceededGainsEndTimeAndKeepsIt(t *testing.T) {
+	start := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	end := metav1.NewTime(start.Add(7 * time.Minute))
+	early := rec("nightly-4", start, monitoringv1alpha1.ExecutionPhaseSucceeded)
+	done := early
+	done.EndTime = &end
+
+	merged := history.Merge([]monitoringv1alpha1.ExecutionRecord{early}, []monitoringv1alpha1.ExecutionRecord{done}, 10)
+	if merged[0].EndTime == nil {
+		t.Fatalf("the view with an EndTime must replace the one without: %+v", merged[0])
+	}
+	merged = history.Merge(merged, []monitoringv1alpha1.ExecutionRecord{early}, 10)
+	if merged[0].EndTime == nil {
+		t.Fatalf("a stale view without an EndTime must not undo it: %+v", merged[0])
+	}
+}
+
+// Two Running views of the same Job: the creationTimestamp fallback, then the
+// real status.startTime, which is normally later. The later one wins.
+func TestMergeRunningRefinesStartTime(t *testing.T) {
+	created := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	started := created.Add(3 * time.Second)
+	merged := history.Merge(
+		[]monitoringv1alpha1.ExecutionRecord{rec("nightly-5", created, monitoringv1alpha1.ExecutionPhaseRunning)},
+		[]monitoringv1alpha1.ExecutionRecord{rec("nightly-5", started, monitoringv1alpha1.ExecutionPhaseRunning)}, 10)
+	if !merged[0].StartTime.Time.Equal(started) {
+		t.Fatalf("StartTime = %v, want %v", merged[0].StartTime, started)
+	}
+	merged = history.Merge(merged,
+		[]monitoringv1alpha1.ExecutionRecord{rec("nightly-5", created, monitoringv1alpha1.ExecutionPhaseRunning)}, 10)
+	if !merged[0].StartTime.Time.Equal(started) {
+		t.Fatalf("an earlier Running view must not replace a later one: %v", merged[0].StartTime)
+	}
+}

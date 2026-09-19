@@ -1050,3 +1050,58 @@ type scenario struct {
 	monitorCreated          time.Time
 	now                     time.Time
 }
+
+// A Job first observed Running that then fails must be counted as a failure.
+// Kubernetes sets status.completionTime only on success, so the Failed view
+// of the Job carries no end time; history used to wait for one and kept the
+// Running record forever — ExecutionHealthy never saw the failure and
+// CronGuardConsecutiveFailures could not fire for any Job the operator
+// happened to watch start, which is nearly all of them.
+var _ = Describe("Running Job that fails without completionTime", func() {
+	const ns = "cg-running-fail"
+
+	It("records the failure and counts it toward ConsecutiveFailures", func() {
+		base := time.Now().Add(31 * time.Hour).Truncate(time.Minute)
+		cj := makeCronJob(ns, "flaky", "0 * * * *")
+		job := makeOwnedJob(ns, "flaky-1", cj, base.Add(-5*time.Minute))
+		job.Status.StartTime = &metav1.Time{Time: base.Add(-5 * time.Minute)}
+		job.Status.Active = 1
+		cjm := monitorFor(ns, "flaky-mon", "flaky", base.Add(-2*time.Hour))
+		cjm.Spec.MaxConsecutiveFailures = 1
+		store := storeWith(cj, job, cjm)
+		key := types.NamespacedName{Name: "flaky-mon", Namespace: ns}
+
+		clk := clocktesting.NewFakePassiveClock(base)
+		r := reconcilerOver(store, clk)
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		Expect(runningCount(got)).To(Equal(1), "precondition: the Job is seen while it runs")
+
+		// The Job fails. No completionTime: the apiserver refuses one on a
+		// Job that is not Complete=True.
+		var live batchv1.Job
+		Expect(store.Get(ctx, types.NamespacedName{Name: "flaky-1", Namespace: ns}, &live)).To(Succeed())
+		live.Status.Active = 0
+		live.Status.Failed = 1
+		live.Status.Conditions = []batchv1.JobCondition{
+			{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+			{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+		}
+		Expect(store.Status().Update(ctx, &live)).To(Succeed())
+		clk.SetTime(base.Add(time.Minute))
+		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		Expect(runningCount(got)).To(Equal(0), "a failed Job is not running")
+		Expect(got.Status.RecentExecutions[0].Phase).To(Equal(monitoringv1alpha1.ExecutionPhaseFailed))
+		Expect(got.Status.ConsecutiveFailures).To(BeNumerically("==", 1))
+		Expect(got.Status.LastFailureTime).NotTo(BeNil())
+		cond := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionExecutionHealthy)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(monitoringv1alpha1.ReasonConsecutiveFailures))
+	})
+})
