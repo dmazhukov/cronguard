@@ -1,0 +1,15 @@
+# The alerts and the scrape config that install.yaml leaves out: both need the
+# prometheus-operator CRDs, which the release must not assume. Additive, so
+# apply it next to install.yaml; it does not touch the operator's Deployment.
+namespace: cronguard-system
+
+resources:
+  - ../prometheus
+  - servicemonitor.yaml
+
+# Prometheus loads a ServiceMonitor or a PrometheusRule only when its
+# serviceMonitorSelector or ruleSelector matches it. kube-prometheus-stack
+# selects on its release label by default; this labels both:
+# labels:
+#   - pairs:
+#       release: prometheus

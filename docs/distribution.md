@@ -12,6 +12,14 @@ kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.2
 
 This is the lowest-dependency path — no Helm, no extra tooling. Suitable for clusters where Helm is not available or release operations are tightly controlled.
 
+`install.yaml` carries the CRD, RBAC, the operator and its metrics Service, and nothing that needs the prometheus-operator CRDs: **no alerts and no scrape config**, so on this path CronGuard reports SLO state but nothing pages on it. When your cluster has those CRDs, add them from a checkout of the repository, next to `install.yaml`:
+
+```bash
+kustomize build config/observability | kubectl apply -f -
+```
+
+The overlay holds only the `PrometheusRule` of `config/prometheus/` and a `ServiceMonitor` for the metrics Service, in `cronguard-system`; it does not touch the operator. Prometheus loads each only when its `ruleSelector` and `serviceMonitorSelector` match, and kube-prometheus-stack selects on its `release` label by default — uncomment the `labels` block in `config/observability/kustomization.yaml` to set it on both. `/metrics` is plain HTTP without authentication; `kustomize build config/network-policy | kubectl apply -f -` adds an ingress policy for it (from namespaces labelled `metrics: enabled`), and the Helm chart has the same as `networkPolicy`.
+
 ## 2. Helm chart via GitHub Pages
 
 ```bash

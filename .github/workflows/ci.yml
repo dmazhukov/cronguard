@@ -30,6 +30,10 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+  # prometheus-operator schemas for kubeconform, pinned to one commit of the
+  # CRD catalog. Without them kubeconform skips every custom resource, so a
+  # typo in a ServiceMonitor or PrometheusRule passes.
+  CRD_SCHEMAS: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -123,6 +127,30 @@ jobs:
         run: |
           # The file is a PrometheusRule CRD; promtool wants bare RuleGroups.
           yq eval '.spec' config/prometheus/rules.yaml | promtool check rules /dev/stdin
+      - name: Install kustomize and kubeconform
+        run: |
+          KUSTOMIZE_VERSION=v5.8.1
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar -xz
+          sudo mv kustomize /usr/local/bin/
+          KUBECONFORM_VERSION=v0.8.0
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz
+          sudo mv kubeconform /usr/local/bin/
+      # config/default is what the release turns into install.yaml;
+      # config/observability and config/network-policy are applied next to
+      # it. The CRD is dropped before validation because kubeconform has no
+      # schema for CustomResourceDefinition; with it gone nothing may be
+      # skipped, so a schema the catalog stops serving fails the step.
+      - name: Build and validate the kustomize overlays
+        run: |
+          set -euo pipefail
+          for overlay in config/default config/observability config/network-policy; do
+            out=$(kustomize build "$overlay" \
+              | yq eval 'select(.kind != "CustomResourceDefinition")' - \
+              | kubeconform -strict -summary -schema-location default -schema-location "$CRD_SCHEMAS" -)
+            echo "$overlay: $out"
+            # an empty stream validates too
+            grep -Eq 'Valid: [1-9]' <<<"$out" || { echo "::error::$overlay validated no resources"; exit 1; }
+          done
 
   # Guards that the regenerated outputs of `make manifests generate` match what's
   # checked into the repo. Without this, a contributor changing a kubebuilder
@@ -193,7 +221,8 @@ jobs:
           sudo mv kubeconform /usr/local/bin/
       - name: kubeconform default values
         run: |
-          helm template charts/cronguard | kubeconform -strict -summary -ignore-missing-schemas -
+          helm template charts/cronguard \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRD_SCHEMAS" -
       - name: kubeconform — full opt-ins
         run: |
           helm template charts/cronguard \
@@ -203,7 +232,7 @@ jobs:
             --set podDisruptionBudget.enabled=true \
             --set networkPolicy.enabled=true \
             --set-json 'networkPolicy.metricsFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}}]' \
-            | kubeconform -strict -summary -ignore-missing-schemas -
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRD_SCHEMAS" -
 
       # `helm upgrade --reuse-values` renders the new templates against the
       # values of the release being upgraded: Helm replaces the chart's

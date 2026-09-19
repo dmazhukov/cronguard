@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`config/observability/`**: a kustomize overlay with the `PrometheusRule` and a `ServiceMonitor` for the metrics Service, applied next to `install.yaml` on clusters with the prometheus-operator CRDs. The release's `install.yaml` carries neither, which `docs/distribution.md` now says outright. `config/network-policy/` now builds into `cronguard-system` instead of the scaffold's `system` placeholder. CI builds the kustomize output and renders the chart against the prometheus-operator schemas, pinned to one commit of the CRD catalog; before, kubeconform skipped every custom resource, so a typo in the chart's ServiceMonitor or PrometheusRule would have shipped.
+
 ## [0.4.2] - 2026-09-19
 
 ### Added

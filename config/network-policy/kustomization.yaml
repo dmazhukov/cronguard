@@ -1,2 +1,4 @@
+namespace: cronguard-system
+
 resources:
 - allow-metrics-traffic.yaml
