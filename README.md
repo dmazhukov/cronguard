@@ -147,7 +147,7 @@ A pre-built Grafana dashboard ships under [`config/grafana/`](config/grafana/) â
 
 ## Roadmap
 
-**Shipped (v0.3.x, v0.4.0):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping, bounded schedule math with proven DST semantics, the missed-run floor from `CronJob.status` (ADR 0001), attested release artifacts. See [CHANGELOG.md](CHANGELOG.md) for details.
+**Shipped (v0.3.x, v0.4.x):** CEL admission validation, burn-rate SLO alerts (`cronguard_missed_runs_total`), HA metrics deduplication (leader-only scrape), drift annotation re-stamping, bounded schedule math with proven DST semantics, the missed-run floor from `CronJob.status` (ADR 0001), attested release artifacts, cosign-signed image and chart. See [CHANGELOG.md](CHANGELOG.md) for details.
 
 **Shipped (v0.2.x):** operator core, CRD with timezone-aware schedules (`spec.timeZone` with fallback to `CronJob.spec.timeZone`), envtest suite, raw `kubectl apply` manifests, Prometheus metrics, Helm chart (OCI + GitHub Pages), Grafana dashboard, default `PrometheusRule`, `ServiceMonitor`, kind-based e2e, Artifact Hub listing.
 

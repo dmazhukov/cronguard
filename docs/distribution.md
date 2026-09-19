@@ -130,4 +130,6 @@ cosign verify \
   ghcr.io/dmazhukov/charts/cronguard:0.4.1
 ```
 
-Releases before v0.5.0 have the attestation but no cosign signature.
+The signatures are stored as OCI referrers in the Sigstore bundle format. cosign v3 finds them as shown; cosign 2.x needs `--new-bundle-format` (checked with 2.6.1) and without it reports `no signatures found`.
+
+Releases before v0.4.1 have the attestation but no cosign signature. Artifact Hub does not mark the chart as signed: the listing is registered from the GitHub Pages repository, where it looks for a Helm provenance file (`.prov`), and it checks cosign signatures only for charts listed from an OCI registry.

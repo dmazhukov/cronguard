@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Docs: verifying the cosign signatures of 0.4.1.** The signatures are OCI referrers in the Sigstore bundle format: cosign v3 finds them, cosign 2.x reports `no signatures found` unless given `--new-bundle-format`. `docs/distribution.md` named v0.5.0 as the first signed release; it is v0.4.1. The chart is not shown as signed on Artifact Hub, which reads cosign signatures only for listings registered from an OCI registry.
+
 ## [0.4.1] - 2026-09-19
 
 ### Fixed
