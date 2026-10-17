@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Go 1.27.2 and `golang.org/x/net` 0.60.0.** The 0.4.3 image carries 18 findings: four HIGH — HTTP/2 denial of service through excessive SETTINGS frames (CVE-2026-78669, in the standard library and in x/net), net/http Range headers (CVE-2026-78667), crypto/tls ECH extension references (CVE-2026-97031) — plus twelve MEDIUM, one LOW and one unknown in the same two modules. govulncheck finds all five x/net ones reachable from the operator, through the client it uses to talk to the API server. With `metrics.secure` the `/metrics` listener speaks HTTP/2 as well, so the HTTP/2 ones also apply to anyone who can reach it. The rebuilt image scans clean at every severity.
+- CI was red on `main` since the scheduled run of 2026-10-12: setup-go moved to Go 1.27.2, whose export data golangci-lint v2.13.2 cannot read, and govulncheck and the image scan failed on the findings above. golangci-lint v2.15.0 reads it.
+- Dependencies: Kubernetes libraries 0.37.1, controller-runtime 0.25.2, client_golang 1.25.0, ginkgo 2.33.0, gomega 1.44.0; actions codeql 4.38.1, sbom-action 0.24.3, kind-action 1.15.1.
+
 ## [0.4.3] - 2026-09-19
 
 ### Added
