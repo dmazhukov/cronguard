@@ -29,7 +29,7 @@ CronGuard replaces that with a declarative SLO per CronJob.
 
 ```bash
 helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
-  --version 0.4.4 \
+  --version 0.4.5 \
   --namespace cronguard-system --create-namespace
 ```
 
@@ -38,14 +38,14 @@ helm install cronguard oci://ghcr.io/dmazhukov/charts/cronguard \
 ```bash
 helm repo add cronguard https://dmazhukov.github.io/cronguard/
 helm repo update
-helm install cronguard cronguard/cronguard --version 0.4.4 \
+helm install cronguard cronguard/cronguard --version 0.4.5 \
   --namespace cronguard-system --create-namespace
 ```
 
 ### Raw manifests
 
 ```bash
-kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.4/install.yaml
+kubectl apply -f https://github.com/dmazhukov/cronguard/releases/download/v0.4.5/install.yaml
 ```
 
 `install.yaml` carries no alerts and no scrape config — they need the prometheus-operator CRDs. Add them next to it with `kustomize build config/observability | kubectl apply -f -` from a checkout, or use the chart.
