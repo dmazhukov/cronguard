@@ -4,6 +4,48 @@ entries:
   - annotations:
       artifacthub.io/category: monitoring-logging
       artifacthub.io/changes: |
+        - kind: fixed
+          description: A monitor schedule with a TZ=/CRON_TZ= prefix not followed by a space reports InvalidSchedule instead of panicking the reconcile
+        - kind: fixed
+          description: '@every is rejected however it is spaced; a tab after the zone prefix used to slip it through as an always-on-time interval'
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: GitHub
+          url: https://github.com/dmazhukov/cronguard
+        - name: OCI
+          url: oci://ghcr.io/dmazhukov/charts/cronguard
+      artifacthub.io/signKey: |
+        fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+        url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
+    apiVersion: v2
+    appVersion: 0.4.5
+    created: "2026-10-17T23:27:25.010621048Z"
+    description: SLO-style observability operator for Kubernetes CronJobs
+    digest: 443ca61f63e08920a166b2da63737b6902bb0b05a7a943cb702961bb201b5e1a
+    home: https://github.com/dmazhukov/cronguard
+    keywords:
+    - kubernetes
+    - operator
+    - cronjob
+    - prometheus
+    - sre
+    - slo
+    - monitoring
+    kubeVersion: '>=1.28.0-0'
+    maintainers:
+    - email: dmitry0983@gmail.com
+      name: Dmitrii Zhukov
+      url: https://github.com/dmazhukov
+    name: cronguard
+    sources:
+    - https://github.com/dmazhukov/cronguard
+    type: application
+    urls:
+    - https://dmazhukov.github.io/cronguard/cronguard-0.4.5.tgz
+    version: 0.4.5
+  - annotations:
+      artifacthub.io/category: monitoring-logging
+      artifacthub.io/changes: |
         - kind: security
           description: Go 1.27.2 and golang.org/x/net 0.60.0; the 0.4.3 image had 4 HIGH, 12 MEDIUM, 1 LOW findings, this one scans clean
         - kind: changed
@@ -658,4 +700,4 @@ entries:
     urls:
     - https://dmazhukov.github.io/cronguard/cronguard-0.2.0.tgz
     version: 0.2.0
-generated: "2026-10-17T22:41:58.058546323Z"
+generated: "2026-10-17T23:27:25.009426683Z"

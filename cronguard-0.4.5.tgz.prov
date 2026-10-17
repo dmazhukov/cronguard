@@ -1,0 +1,63 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/changes: |
+    - kind: fixed
+      description: A monitor schedule with a TZ=/CRON_TZ= prefix not followed by a space reports InvalidSchedule instead of panicking the reconcile
+    - kind: fixed
+      description: '@every is rejected however it is spaced; a tab after the zone prefix used to slip it through as an always-on-time interval'
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: GitHub
+      url: https://github.com/dmazhukov/cronguard
+    - name: OCI
+      url: oci://ghcr.io/dmazhukov/charts/cronguard
+  artifacthub.io/signKey: |
+    fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+    url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
+apiVersion: v2
+appVersion: 0.4.5
+description: SLO-style observability operator for Kubernetes CronJobs
+home: https://github.com/dmazhukov/cronguard
+keywords:
+- - kubernetes
+- - operator
+- - cronjob
+- - prometheus
+- - sre
+- - slo
+- - monitoring
+kubeVersion: '>=1.28.0-0'
+maintainers:
+- - email: dmitry0983@gmail.com
+  name: Dmitrii Zhukov
+  url: https://github.com/dmazhukov
+name: cronguard
+sources:
+- - https://github.com/dmazhukov/cronguard
+type: application
+version: 0.4.5
+
+...
+files:
+  cronguard-0.4.5.tgz: sha256:443ca61f63e08920a166b2da63737b6902bb0b05a7a943cb702961bb201b5e1a
+
+-----BEGIN PGP SIGNATURE-----
+
+wsG5BAEBCgBtBYJq1ARUCRAAbpkBdKt9YUUUAAAAAAAcACBzYWx0QG5vdGF0aW9u
+cy5vcGVucGdwanMub3JnSoGUghkCzk0vvgOn152rRwnHJO4kpKgjNCzWv1RuG3oW
+IQTY0jBH8vZvV/TnBRQAbpkBdKt9YQAADk0P/RfNvmMAajHgmz0GE87NvdiHos0z
+fNSN1UfK2ll0e2FCDbzyV4NKq1wz2AIUBvYcGGjF4iGBO7p8kRpgrEr0dOMI7VD9
+Z7kdYstPSGi+FySaztAS4yynaTVD5CXXlHdwGBGiqH1By7yoFYRBnw96IJI0Lgf/
+yy3JiSdw0ZnLHgZr0FNRv8MMHwyCmMLS7pQTbXJoV3Ae2ErhXSWg8/7AXQQiMQ8S
+RUd7ayjoKjyIBZkcZYE6nBIWhhlbwBBhlOFVpEcw9FMX4nPPX5OJjDR9m8wObsFD
+keeOfvzXBokYCPM4j2wd+NQnl89ocqe8oJYTPl+/yS8o9SHFJXMKekM0Ef8eJ06B
+EDhvarINKQjHbGoNX8s+rhnVL2IuUHvb8svlQOL7+sR/ZDA+I4TGsk+ElzGNBTx8
+627Hkd9jQwpWr64EDjSkrTH6MwtpKD1S3hCTXtL30Ygl2DkldGh/LZaSo/GNSJiO
+O5h7sMncdp1Fvo4T7+eS8yM4YhbHoMZkSLmKbePb4tm/iy7ipHxW1yWYs38pNhzb
+SlefzIgQNjA/JV10sNSVGAdDK86HSVPWaaIkUs+O1aEQF7m3yqkQkvMXr8orgnMD
+lb3Ec4pXfOji3GkWOBJvvp3+TRivxpHDvMe8OQxUKOJNUzZ45OBfvkgwiUziI8rN
+OptvUyAKwHJoFsnx
+-----END PGP SIGNATURE-----
