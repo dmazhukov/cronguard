@@ -3,6 +3,7 @@ package schedule_test
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -552,6 +553,22 @@ func TestParseZonePrefixAloneIsAnError(t *testing.T) {
 		_, err := schedule.Parse(expr)
 		if !errors.Is(err, schedule.ErrMalformed) {
 			t.Errorf("Parse(%q) = %v, want ErrMalformed", expr, err)
+		}
+	}
+}
+
+// The @every check looks at what the parser built, not at how the input is
+// spelled: robfig trims any whitespace after a zone prefix, and a check that
+// trimmed only spaces let "CRON_TZ=UTC \t@every 1m" through as a monitor that
+// is always on time.
+func TestParseRejectsEveryHowever(t *testing.T) {
+	for _, expr := range []string{"@every 1m", "TZ=UTC @every 1m", "CRON_TZ=UTC \t@every 1m", "CRON_TZ=UTC  @every 1m", "TZ=UTC\u00a0@every 1m", " @every 1m", "\t@every 1m"} {
+		_, err := schedule.Parse(expr)
+		if err != nil && !errors.Is(err, schedule.ErrRelativeSchedule) && !strings.Contains(err.Error(), "bad location") && !strings.Contains(err.Error(), "fields") {
+			t.Errorf("Parse(%q) = %v, want ErrRelativeSchedule or a parse error", expr, err)
+		}
+		if err == nil {
+			t.Errorf("Parse(%q) accepted an @every schedule", expr)
 		}
 	}
 }

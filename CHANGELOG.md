@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`@every` is rejected however it is spaced.** The check looked for `@every` after a zone prefix and single spaces, while the cron parser trims any whitespace: a monitor with `spec.schedule: "CRON_TZ=UTC <tab>@every 1m"`, which CEL admits, parsed as an interval and showed green with a drift of zero. The rejection now looks at what the parser built.
 - **A monitor whose `spec.schedule` has a `TZ=`/`CRON_TZ=` prefix not followed by a space (`TZ=UTC`, `CRON_TZ=`, an expression separated by tabs) reports `InvalidSchedule` instead of never reporting.** The cron parser panics on such a string; the apiserver recovers from that for `CronJob.spec.schedule`, but the CEL rule on a monitor's `spec.schedule` accepts any `TZ=`/`CRON_TZ=` prefix, so the expression reached the reconciler. controller-runtime caught the panic and retried with backoff forever, and the monitor kept whatever status it had before.
 
 ## [0.4.4] - 2026-10-17
