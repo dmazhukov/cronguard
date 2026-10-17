@@ -80,6 +80,10 @@ var ErrEmpty = errors.New("schedule: empty expression")
 // that mean nothing.
 var ErrRelativeSchedule = errors.New("schedule: @every is not supported; use a cron expression")
 
+// ErrMalformed reports an expression the cron parser panicked on instead of
+// rejecting.
+var ErrMalformed = errors.New("schedule: malformed expression")
+
 // isRelativeExpr reports whether expr is an @every descriptor, looking past an
 // optional CRON_TZ=/TZ= prefix.
 func isRelativeExpr(expr string) bool {
@@ -131,11 +135,24 @@ func ParseInLocation(expr string, loc *time.Location) (*Schedule, error) {
 		}
 		fullExpr = "CRON_TZ=" + loc.String() + " " + expr
 	}
-	s, err := parser.Parse(fullExpr)
+	s, err := parse(fullExpr)
 	if err != nil {
 		return nil, fmt.Errorf("schedule: parse %q: %w", expr, err)
 	}
 	return &Schedule{expr: s}, nil
+}
+
+// parse turns a robfig panic into an error. robfig slices past the end of a
+// TZ=/CRON_TZ= prefix not followed by an ASCII space ("TZ=UTC", "CRON_TZ=",
+// "TZ=UTC\t0 3 * * *"); the apiserver recovers the same way, and CEL lets
+// such a prefix through on a monitor's spec.schedule.
+func parse(expr string) (s cron.Schedule, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			s, err = nil, fmt.Errorf("%w: a CRON_TZ=/TZ= prefix must be followed by a space and a cron expression", ErrMalformed)
+		}
+	}()
+	return parser.Parse(expr)
 }
 
 // Next returns the first scheduled time strictly after `from`.

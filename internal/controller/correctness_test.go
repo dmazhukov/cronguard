@@ -1177,8 +1177,10 @@ var _ = Describe("drift that cannot be resolved", func() {
 // parser accepted and another rejected (kubernetes/kube-state-metrics#2978).
 // CronGuard parses with the apiserver's own robfig parser, so the divergence
 // it can meet is its own: @every, which it rejects on purpose, and schedules
-// that parse but never fire. Every one of these must end in a condition, not
-// a panic, and never in a green row for a job that cannot run.
+// that parse but never fire. robfig also panics on a zone prefix with nothing
+// after it ("TZ=UTC"), which the apiserver recovers from and CEL on a
+// monitor's spec.schedule lets through. Every one of these must end in a
+// condition, not a panic, and never in a green row for a job that cannot run.
 var _ = Describe("CronJob schedules at the edge of the parser", func() {
 	const ns = "cg-edge"
 
@@ -1212,7 +1214,33 @@ var _ = Describe("CronJob schedules at the edge of the parser", func() {
 		Entry("Quartz L", "quartz-l", "0 0 L * *", monitoringv1alpha1.ReasonInvalidSchedule),
 		Entry("February 30", "feb-30", "0 0 30 2 *", monitoringv1alpha1.ReasonUnsatisfiableSchedule),
 		Entry("April 31", "apr-31", "0 0 31 4 *", monitoringv1alpha1.ReasonUnsatisfiableSchedule),
+		Entry("a time zone and nothing else", "tz-only", "TZ=UTC", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("CRON_TZ= and nothing else", "cron-tz-empty", "CRON_TZ=", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("an unknown zone and nothing else", "tz-zero", "TZ=0", monitoringv1alpha1.ReasonInvalidSchedule),
 	)
+
+	// The apiserver keeps these out of CronJob.spec.schedule; a monitor's own
+	// spec.schedule is where they actually arrive.
+	It("reports a zone prefix alone on the monitor's own schedule", func() {
+		now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+		cj := makeCronJob(ns, "override", "0 * * * *")
+		cjm := monitorFor(ns, "override-mon", "override", now.Add(-time.Hour))
+		cjm.Spec.Schedule = "TZ=UTC"
+		store := storeWith(cj, cjm)
+		key := types.NamespacedName{Name: "override-mon", Namespace: ns}
+
+		r := reconcilerOver(store, clocktesting.NewFakePassiveClock(now))
+		Expect(func() {
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).NotTo(HaveOccurred())
+		}).NotTo(Panic())
+		var got monitoringv1alpha1.CronJobMonitor
+		Expect(store.Get(ctx, key, &got)).To(Succeed())
+		rec := findCondition(got.Status.Conditions, monitoringv1alpha1.ConditionReconciled)
+		Expect(rec).NotTo(BeNil())
+		Expect(rec.Reason).To(Equal(monitoringv1alpha1.ReasonInvalidSchedule))
+		Expect(rec.Message).To(ContainSubstring("must be followed by a space"))
+	})
 })
 
 // A Job's phase is terminal only once the Job controller says so with a
