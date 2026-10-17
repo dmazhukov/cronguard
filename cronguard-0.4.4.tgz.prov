@@ -1,0 +1,64 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/changes: |
+    - kind: security
+      description: Go 1.27.2 and golang.org/x/net 0.60.0; the 0.4.3 image had 4 HIGH, 12 MEDIUM, 1 LOW findings, this one scans clean
+    - kind: changed
+      description: Kubernetes libraries 0.37.1, controller-runtime 0.25.2, client_golang 1.25.0
+  artifacthub.io/containsSecurityUpdates: "true"
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: GitHub
+      url: https://github.com/dmazhukov/cronguard
+    - name: OCI
+      url: oci://ghcr.io/dmazhukov/charts/cronguard
+  artifacthub.io/signKey: |
+    fingerprint: D8D23047F2F66F57F4E70514006E990174AB7D61
+    url: https://dmazhukov.github.io/cronguard/pgp_keys.asc
+apiVersion: v2
+appVersion: 0.4.4
+description: SLO-style observability operator for Kubernetes CronJobs
+home: https://github.com/dmazhukov/cronguard
+keywords:
+- - kubernetes
+- - operator
+- - cronjob
+- - prometheus
+- - sre
+- - slo
+- - monitoring
+kubeVersion: '>=1.28.0-0'
+maintainers:
+- - email: dmitry0983@gmail.com
+  name: Dmitrii Zhukov
+  url: https://github.com/dmazhukov
+name: cronguard
+sources:
+- - https://github.com/dmazhukov/cronguard
+type: application
+version: 0.4.4
+
+...
+files:
+  cronguard-0.4.4.tgz: sha256:7d424823b16f5c5392630e29a92219d5118852455b3f06efa55d0e5e449147ac
+
+-----BEGIN PGP SIGNATURE-----
+
+wsG5BAEBCgBtBYJq0/moCRAAbpkBdKt9YUUUAAAAAAAcACBzYWx0QG5vdGF0aW9u
+cy5vcGVucGdwanMub3JnKhlu8nuwZO/Mz6tTAZ4lOvYHDZIMiiK0+6vwEQ64D08W
+IQTY0jBH8vZvV/TnBRQAbpkBdKt9YQAAusgP/37GmlfReG8xB3uvkKHSinWBsvx5
+5/ZTTz3KPp5eaakJYCnGbZLrX7K5dXtoGO+Uy6tGglec88IoSEN8xsfzTKc7337m
+piFj34bCKR/vycNQTY/x5hPN5dAdTGxYdOPfxN9xqutFeVj8T2qQxcvCqy3sxQEb
+sGmw50V8ry9lkf5P9iFifYwpCDMAKKOBoFSdgMwnWBonk864oigCe6fnvtUPxiBf
+iDND+iznk+/pE32GFxnukAWRKGZfs0JIIFlUlq2GyRSnvN6Q1Tz8F6r4Tr9NFo7n
+Y7pM5a0i1W0BxsdRpl6ptlHiEenDnu8hwOuNNG4yS+L0f65idxYynGLj0RVggkAg
+uD0vhufO/B6yl4ezT/NyTk9fVbzdf2VNFzyK41JeGwmPNzTup1tBev6kVRhmvWcf
+SGplPB9ZlHt3pEMUiqe2qPnS1+fhdhNfeaUK4mcEuLaxMqxETGOyJhRHrujui2PO
+WL5MqYYagBmnt4zOn2SOESl853BuLHojf57vrhAf3wzgbTBZGdZOvCkF45pWG2ZI
+lCsaC618ppr9ur7QPQxbCKaLQrirmdeXeUISUPTaaMIOnbTOSvhVKFNcydXcWvgf
+a236LJVmUhrtw1hZsH+DQVGKQwZ7bGXvF2ABWZANhi7sZm+uwdfTHRgtF1d0Hma6
+rMvypBimC1g2xXwO
+-----END PGP SIGNATURE-----
