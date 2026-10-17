@@ -1,0 +1,46 @@
+name: Main failure issue
+
+# A scheduled run that fails on main notifies only whoever last edited its
+# cron line, so failures on main become an issue; see hack/ci-failure-issue.sh.
+on:
+  workflow_run:
+    workflows: [CI, e2e, CodeQL, Scorecard]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  track:
+    # head_repository: a fork can name its branch main too.
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["schedule", "push", "workflow_dispatch"]'), github.event.workflow_run.event) &&
+      contains(fromJSON('["success", "failure", "timed_out"]'), github.event.workflow_run.conclusion)
+    # On the job, not the workflow: a job skipped by the if above takes no
+    # place in the group, so pull request runs cannot push a main run out.
+    concurrency:
+      group: main-failure-${{ github.event.workflow_run.name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+        run: hack/ci-failure-issue.sh
