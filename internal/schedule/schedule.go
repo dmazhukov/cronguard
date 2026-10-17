@@ -84,18 +84,6 @@ var ErrRelativeSchedule = errors.New("schedule: @every is not supported; use a c
 // rejecting.
 var ErrMalformed = errors.New("schedule: malformed expression")
 
-// isRelativeExpr reports whether expr is an @every descriptor, looking past an
-// optional CRON_TZ=/TZ= prefix.
-func isRelativeExpr(expr string) bool {
-	body := expr
-	if i := strings.IndexByte(body, ' '); i > 0 {
-		if p := body[:i]; strings.HasPrefix(p, "CRON_TZ=") || strings.HasPrefix(p, "TZ=") {
-			body = strings.TrimLeft(body[i+1:], " ")
-		}
-	}
-	return strings.HasPrefix(body, "@every")
-}
-
 var parser = cron.NewParser(
 	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 )
@@ -125,9 +113,6 @@ func ParseInLocation(expr string, loc *time.Location) (*Schedule, error) {
 	if expr == "" {
 		return nil, ErrEmpty
 	}
-	if isRelativeExpr(expr) {
-		return nil, fmt.Errorf("schedule: parse %q: %w", expr, ErrRelativeSchedule)
-	}
 	fullExpr := expr
 	if !strings.HasPrefix(expr, "CRON_TZ=") && !strings.HasPrefix(expr, "TZ=") {
 		if loc == nil {
@@ -138,6 +123,11 @@ func ParseInLocation(expr string, loc *time.Location) (*Schedule, error) {
 	s, err := parse(fullExpr)
 	if err != nil {
 		return nil, fmt.Errorf("schedule: parse %q: %w", expr, err)
+	}
+	// Judged on what the parser built, not on the spelling: robfig trims any
+	// whitespace before "@every", which a prefix check misses.
+	if _, relative := s.(cron.ConstantDelaySchedule); relative {
+		return nil, fmt.Errorf("schedule: parse %q: %w", expr, ErrRelativeSchedule)
 	}
 	return &Schedule{expr: s}, nil
 }

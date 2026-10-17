@@ -1217,6 +1217,9 @@ var _ = Describe("CronJob schedules at the edge of the parser", func() {
 		Entry("a time zone and nothing else", "tz-only", "TZ=UTC", monitoringv1alpha1.ReasonInvalidSchedule),
 		Entry("CRON_TZ= and nothing else", "cron-tz-empty", "CRON_TZ=", monitoringv1alpha1.ReasonInvalidSchedule),
 		Entry("an unknown zone and nothing else", "tz-zero", "TZ=0", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("@every after a tab", "every-tab", "CRON_TZ=UTC \t@every 1m", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("@every after two spaces", "every-spaces", "CRON_TZ=UTC  @every 1m", monitoringv1alpha1.ReasonInvalidSchedule),
+		Entry("@every with leading whitespace", "every-lead", " @every 1m", monitoringv1alpha1.ReasonInvalidSchedule),
 	)
 
 	// The apiserver keeps these out of CronJob.spec.schedule; a monitor's own
