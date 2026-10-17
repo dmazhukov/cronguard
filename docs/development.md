@@ -42,11 +42,17 @@ Dependabot opens weekly PRs against `main` every Monday at 07:00 MSK for:
 - Docker base image (`Dockerfile`) — label `dependencies`, `docker`
 
 Auto-merge can be enabled per-PR via `gh pr merge --rebase --auto` after CI
-passes. Branch protection on `main` requires seven checks — `lint`, `test`,
+passes. Branch protection on `main` requires eight checks — `lint`, `test`,
 `build`, `vuln`, `analyze (go)`, `manifests-clean` (which also runs
-`make verify-crd-sync`) and `chart-lint` — so a Dependabot PR cannot merge if
-it breaks anything. `e2e`, `prometheus-rules` and `gitleaks` run on every PR
-but are not required.
+`make verify-crd-sync`), `chart-lint` and `gitleaks` — so a Dependabot PR
+cannot merge if it breaks anything. `e2e` and `prometheus-rules` run on every
+PR but are not required.
+
+CI, e2e, CodeQL and Scorecard also run on a schedule against `main`, where a
+new vulnerability or a toolchain change can break them with no PR open. When
+one of them fails on `main`, `.github/workflows/main-failure-issue.yml` opens
+an issue labelled `ci-failure` (one per workflow, later failures add comments)
+and closes it on the workflow's next success.
 
 ## Local make targets
 
