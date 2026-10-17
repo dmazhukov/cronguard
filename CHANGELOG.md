@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A monitor whose `spec.schedule` has a `TZ=`/`CRON_TZ=` prefix not followed by a space (`TZ=UTC`, `CRON_TZ=`, an expression separated by tabs) reports `InvalidSchedule` instead of never reporting.** The cron parser panics on such a string; the apiserver recovers from that for `CronJob.spec.schedule`, but the CEL rule on a monitor's `spec.schedule` accepts any `TZ=`/`CRON_TZ=` prefix, so the expression reached the reconciler. controller-runtime caught the panic and retried with backoff forever, and the monitor kept whatever status it had before.
+
 ## [0.4.4] - 2026-10-17
 
 ### Security

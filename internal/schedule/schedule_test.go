@@ -1,6 +1,7 @@
 package schedule_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -541,5 +542,16 @@ func TestNextSlotLocalZoneAtNewYear(t *testing.T) {
 	want := time.Date(2104, 2, 29, 0, 0, 0, 0, kiri)
 	if !ok || !got.Equal(want) {
 		t.Fatalf("NextSlot(%v) = %v, %v; want %v", from, got, ok, want)
+	}
+}
+
+// robfig panics on a zone prefix with nothing after it; the reconciler parses
+// on every pass, so a panic would requeue it forever and never report.
+func TestParseZonePrefixAloneIsAnError(t *testing.T) {
+	for _, expr := range []string{"TZ=UTC", "CRON_TZ=", "TZ=", "TZ=0", "CRON_TZ=Europe/Berlin", "TZ=UTC\t", "TZ=UTC\t0\t3\t*\t*\t*"} {
+		_, err := schedule.Parse(expr)
+		if !errors.Is(err, schedule.ErrMalformed) {
+			t.Errorf("Parse(%q) = %v, want ErrMalformed", expr, err)
+		}
 	}
 }
